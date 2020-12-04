@@ -132,7 +132,7 @@ def _get_py_library_win(build_type, py_version, py_prefix, py_libdir,
         py_libdir = os.path.join(os.path.dirname(py_include_dir), "libs")
         if not os.path.isdir(py_libdir):
             raise DistutilsSetupError("Failed to locate the 'libs' directory")
-    dbg_postfix = "_d" if build_type == "Debug" else ""
+    dbg_postfix = ""  # "_d" if build_type == "Debug" else ""
     if OPTION["MAKESPEC"] == "mingw":
         static_lib_name = "libpython{}{}.a".format(
             py_version.replace(".", ""), dbg_postfix)
