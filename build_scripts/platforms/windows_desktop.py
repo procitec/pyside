@@ -238,7 +238,7 @@ def prepare_packages_win32(self, vars):
         # shiboken module, because libshiboken uses C++ code.
         copy_msvc_redist_files(vars, "{build_dir}/msvc_redist".format(**vars))
 
-    if config.is_internal_pyside_build() or config.is_internal_shiboken_generator_build():
+    if config.is_internal_shiboken_generator_build():
         copy_qt_artifacts(self, copy_pdbs, vars)
         copy_msvc_redist_files(vars, "{build_dir}/msvc_redist".format(**vars))
 
