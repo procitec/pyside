@@ -986,7 +986,7 @@ class PysideBuild(_build, CommandMixin, BuildInfoCollectorMixin):
                     log.warning(f'ignored error: {e}')
 
             if sys.platform == "win32":
-                _vars['dbg_postfix'] = OPTION["DEBUG"] and "_d" or ""
+                _vars['dbg_postfix'] = ""  # OPTION["DEBUG"] and "_d" or ""
                 return prepare_packages_win32(self, _vars)
             else:
                 return prepare_packages_posix(self, _vars, self.is_cross_compile)
