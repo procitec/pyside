@@ -192,7 +192,7 @@ namespace QFlags
         }
         newspec.slots = SbkNewQFlagsType_spec.slots;
         PyTypeObject *type = (PyTypeObject *)SbkType_FromSpec(&newspec);
-        Py_TYPE(type) = &PyType_Type;
+        Py_SET_TYPE(type, &PyType_Type);
 
         PySideQFlagsType *flagsType = reinterpret_cast<PySideQFlagsType *>(type);
         PepType_PFTP(flagsType)->converterPtr = &PepType_PFTP(flagsType)->converter;

@@ -754,7 +754,7 @@ newTypeWithName(const char *name,
     PyTuple_SetItem(bases, 0, reinterpret_cast<PyObject *>(basetype));
     auto *type = reinterpret_cast<PyTypeObject *>(SbkType_FromSpecWithBases(&newspec, bases));
     PyErr_Print();
-    Py_TYPE(type) = SbkEnumType_TypeF();
+    Py_SET_TYPE(type, SbkEnumType_TypeF());
 
     auto *enumType = reinterpret_cast<SbkEnumType *>(type);
     PepType_SETP(enumType)->cppName = cppName;

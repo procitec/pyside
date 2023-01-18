@@ -90,7 +90,7 @@ PyObject *create(PyObject *obj, PySideWeakRefFunction func, void *userData)
 
     if (Py_TYPE(PySideCallableObjectTypeF()) == 0)
     {
-        Py_TYPE(PySideCallableObjectTypeF()) = &PyType_Type;
+        Py_SET_TYPE(PySideCallableObjectTypeF(), &PyType_Type);
         PyType_Ready(PySideCallableObjectTypeF());
     }
 

@@ -94,6 +94,7 @@ class Config(object):
             'Programming Language :: Python :: 3.8',
             'Programming Language :: Python :: 3.9',
             'Programming Language :: Python :: 3.10',
+            'Programming Language :: Python :: 3.11',
         ]
 
         self.setup_script_dir = None
@@ -136,7 +137,7 @@ class Config(object):
         setup_kwargs['zip_safe'] = False
         setup_kwargs['cmdclass'] = cmd_class_dict
         setup_kwargs['version'] = package_version
-        setup_kwargs['python_requires'] = ">=2.7, !=3.0.*, !=3.1.*, !=3.2.*, !=3.3.*, !=3.4.*, <3.11"
+        setup_kwargs['python_requires'] = ">=2.7, !=3.0.*, !=3.1.*, !=3.2.*, !=3.3.*, !=3.4.*, <3.12"
 
         if quiet:
             # Tells distutils / setuptools to be quiet, and only print warnings or errors.

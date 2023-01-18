@@ -162,7 +162,7 @@ PyTypeObject *PySideSignalTypeF(void)
     if (!type) {
         type = reinterpret_cast<PyTypeObject *>(SbkType_FromSpec(&PySideSignalType_spec));
         PyTypeObject *hold = Py_TYPE(type);
-        Py_TYPE(type) = PySideMetaSignalTypeF();
+        Py_SET_TYPE(type, PySideMetaSignalTypeF());
         Py_INCREF(Py_TYPE(type));
         Py_DECREF(hold);
     }
