@@ -37,6 +37,9 @@
 #include <QtCore/QFile>
 #include <QtCore/QScopedArrayPointer>
 #include <QtCore/QString>
+#include <QLoggingCategory>
+
+Q_DECLARE_LOGGING_CATEGORY(lcShiboken)
 
 namespace clang {
 
@@ -249,7 +252,7 @@ static CXTranslationUnit createTranslationUnit(CXIndex index,
 
     const QByteArrayList clangArgs = emulatedCompilerOptions() + defaultArgs + args;
     QScopedArrayPointer<const char *> argv(byteArrayListToFlatArgV(clangArgs));
-    qDebug().noquote().nospace() << msgCreateTranslationUnit(clangArgs, flags);
+    qCDebug(lcShiboken).noquote().nospace() << msgCreateTranslationUnit(clangArgs, flags);
 
     CXTranslationUnit tu;
     CXErrorCode err = clang_parseTranslationUnit2(index, nullptr, argv.data(),
