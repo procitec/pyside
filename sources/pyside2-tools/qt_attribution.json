@@ -1,0 +1,16 @@
+[
+{
+    "Id": "pylupdate",
+    "Name": "pylupdate",
+    "Path": "pylupdate",
+    "Description": "The pylupdate tool is used to create or update Qt Linguist translation files from Python sources",
+    "QtUsage": "Python version of the Qt lupdate tool",
+    "License": "GNU Library General Public License v2 only",
+    "LicenseId": "GPL-2.0",
+    "LicenseFile": "LICENSE-lupdate",
+    "Copyright": "Copyright (C) 1992-2006 Trolltech AS.
+Copyright (C) 2002-2007 Detlev Offenbach <detlev@die-offenbachs.de>.
+Copyright (C) 2009 Nokia Corporation and/or its subsidiary(-ies).
+Copyright (C) 2010 Marcelo Lira <marcelo@setantas.net>."
+}
+]

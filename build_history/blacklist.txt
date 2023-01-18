@@ -1,0 +1,98 @@
+[pysidetest::delegatecreateseditor_test]
+    qt5.6
+[pysidetest::modelview_test]
+    darwin py3
+[pysidetest::qvariant_test]
+    darwin py3
+[pysidetest::utils_test]
+    win32
+[signals::signal_signature_test]
+    linux
+    darwin
+    win32
+[Qt3DExtras::qt3dextras_test]
+    linux
+    darwin
+[QtCore::qfile_test]
+    win32
+    darwin py3
+[QtCore::qfileread_test]
+    darwin
+[QtCore::qobject_connect_notify_test]
+    linux
+    darwin
+    win32
+[QtGui::qmatrix_test]
+    win32
+[QtWidgets::bug_576]
+    linux
+    win32
+    darwin py3
+[QtWidgets::returnquadruplesofnumbers_test]
+    linux
+    darwin
+    win32
+[QtWidgets::qstandarditemmodel_test]
+    py2
+    py3
+[QtTest::touchevent_test]
+    linux
+    darwin
+    win32
+[QtMultimedia::audio_test]
+    linux
+    darwin
+    win32
+[QtQml::bug_951]
+    py3
+[QtQml::javascript_exceptions]
+    py3
+[QtScript::qscriptvalue_test]
+    linux
+    darwin
+    win32
+[QtScriptTools::debugger_test]
+    linux
+    darwin
+    win32
+# AttributeError: 'PySide2.QtQuick.QQuickItem' object has no attribute 'simpleFunction'
+[QtQml::bug_451]
+    py2
+    py3
+# Crashes with Python 2 on Windows
+[QtQml::qqmlnetwork_test]
+    py2 win32
+[QtQml::qquickitem_grabToImage]
+    darwin
+[smart::smart_pointer]
+    py2
+# PYSIDE-474
+[QtWebEngineWidgets::pyside-474-qtwebengineview]
+    py2
+    py3
+[QtCore::thread_signals_test]
+    win32
+    linux
+    darwin
+[QtCore::qthread_prod_cons_test]
+    win32
+    linux
+    darwin
+# PYSIDE-754
+[QtWebEngineCore::web_engine_custom_scheme]
+    win32
+    linux
+    darwin
+# In addition to a pre-existing windows failure,
+# qtlocation/ac899dcc40bb3ad09307583fb7e6befd45a77b33 / QTBUG-66304 introduced
+# a failure in 5.14
+[QtPositioning::positioning]
+    win32
+    linux
+    darwin
+# Open GL functions failures on macOS (2/2020)
+[registry::existence_test]
+    darwin
+# Incomplehensible effect with feature switching on 3.6, qApp.process_events()
+[QtCore::feature_with_uic_test]
+    py3.6
