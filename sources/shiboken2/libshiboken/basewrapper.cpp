@@ -733,12 +733,7 @@ static PyObject *SbkObjectTypeTpNew(PyTypeObject *metatype, PyObject *args, PyOb
     // with Py_TPFLAGS_METHOD_DESCRIPTOR until this is finally solved.
     // PyType_Ready uses mro(). We need to temporarily remove the flag from it's type.
     // We cannot use PyMethodDescr_Type since it is not exported by Python 2.7 .
-    static PyTypeObject *PyMethodDescr_TypePtr = Py_TYPE(
-        PyObject_GetAttr(reinterpret_cast<PyObject *>(&PyType_Type), Shiboken::PyName::mro()));
-    auto hold = PyMethodDescr_TypePtr->tp_flags;
-    PyMethodDescr_TypePtr->tp_flags &= ~Py_TPFLAGS_METHOD_DESCRIPTOR;
     auto *newType = reinterpret_cast<SbkObjectType *>(type_new(metatype, args, kwds));
-    PyMethodDescr_TypePtr->tp_flags = hold;
 
     if (!newType)
         return nullptr;
