@@ -1,4 +1,4 @@
-## PySide2
+## PySide6
 /pyside*_build
 /pyside*_install
 /PySide
@@ -6,13 +6,21 @@
 /SciTE.*
 /pysideuic
 
+# Auto-generated snippets
+sources/pyside6/doc/codesnippets/*
+
+# Auto-generated examples
+sources/pyside6/doc/examples/*
+
+# Auto-generated release notes
+sources/pyside6/doc/release_notes/*
+
 distribute-*.egg
 distribute-*.tar.gz
 explore2
 build_history/2*
 
 *.qdocconf
-*.qdocconf.in
 
 *.egg-info
 *.pyc
@@ -65,7 +73,7 @@ __pycache__/
 .Python
 build/
 develop-eggs/
-#dist/ # we place the changelogs here
+dist/
 downloads/
 eggs/
 .eggs/
@@ -96,6 +104,7 @@ pip-delete-this-directory.txt
 
 # Sphinx documentation
 docs/_build/
+html/
 
 # PyBuilder
 target/

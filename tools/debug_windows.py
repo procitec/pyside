@@ -1,53 +1,32 @@
-#############################################################################
-##
-## Copyright (C) 2018 The Qt Company Ltd.
-## Contact: https://www.qt.io/licensing/
-##
-## This file is part of Qt for Python.
-##
-## $QT_BEGIN_LICENSE:LGPL$
-## Commercial License Usage
-## Licensees holding valid commercial Qt licenses may use this file in
-## accordance with the commercial license agreement provided with the
-## Software or, alternatively, in accordance with the terms contained in
-## a written agreement between you and The Qt Company. For licensing terms
-## and conditions see https://www.qt.io/terms-conditions. For further
-## information use the contact form at https://www.qt.io/contact-us.
-##
-## GNU Lesser General Public License Usage
-## Alternatively, this file may be used under the terms of the GNU Lesser
-## General Public License version 3 as published by the Free Software
-## Foundation and appearing in the file LICENSE.LGPL3 included in the
-## packaging of this file. Please review the following information to
-## ensure the GNU Lesser General Public License version 3 requirements
-## will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-##
-## GNU General Public License Usage
-## Alternatively, this file may be used under the terms of the GNU
-## General Public License version 2.0 or (at your option) the GNU General
-## Public license version 3 or any later version approved by the KDE Free
-## Qt Foundation. The licenses are as published by the Free Software
-## Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-## included in the packaging of this file. Please review the following
-## information to ensure the GNU General Public License requirements will
-## be met: https://www.gnu.org/licenses/gpl-2.0.html and
-## https://www.gnu.org/licenses/gpl-3.0.html.
-##
-## $QT_END_LICENSE$
-##
-###############
+# Copyright (C) 2022 The Qt Company Ltd.
+# SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+from __future__ import annotations
 
-"""
+import argparse
+import ctypes
+import logging
+import re
+import subprocess
+import sys
+from os import path
+from textwrap import dedent
+
+is_win = sys.platform == "win32"
+if is_win:
+    import winreg
+
+
+EPILOG = """
 This is a troubleshooting script that assists finding out which DLLs or
-which symbols in a DLL are missing when executing a PySide2 python
+which symbols in a DLL are missing when executing a PySide6 python
 script.
 It can also be used with any other non Python executable.
 
 Usage: python debug_windows.py
        When no arguments are given the script will try to import
-       PySide2.QtCore.
+       PySide6.QtCore.
 
-Usage: python debug_windows.py python -c "import PySide2.QtWebEngine"
+Usage: python debug_windows.py python -c "import PySide6.QtWebEngine"
        python debug_windows.py my_executable.exe arg1 arg2 --arg3=4
        Any arguments given after the script name will be considered
        as the target executable and the arguments passed to that
@@ -61,39 +40,21 @@ https://developer.microsoft.com/en-us/windows/downloads/windows-10-sdk
 
 """
 
-from __future__ import print_function
-
-import sys
-import re
-import subprocess
-import ctypes
-import logging
-import argparse
-from os import path
-from textwrap import dedent
-
-is_win = sys.platform == "win32"
-is_py_3 = sys.version_info[0] == 3
-if is_win:
-    if is_py_3:
-        import winreg
-    else:
-        import _winreg as winreg
-        import exceptions
-
 
 def get_parser_args():
     desc_msg = "Run an executable under cdb with loader snaps set."
     help_msg = "Pass the executable and the arguments passed to it as a list."
-    parser = argparse.ArgumentParser(description=desc_msg)
+    parser = argparse.ArgumentParser(description=desc_msg,
+                                     formatter_class=argparse.RawDescriptionHelpFormatter,
+                                     epilog=EPILOG)
     parser.add_argument('args', nargs='*', help=help_msg)
     # Prepend -- so that python options like '-c' are ignored by
     # argparse.
-    massaged_args = ['--'] + sys.argv[1:]
-    return parser.parse_args(massaged_args)
+    help_requested = '-h' in sys.argv or '--help' in sys.argv
+    massaged_args = ['--'] + sys.argv[1:] if not help_requested else sys.argv
+    return parser, parser.parse_args(massaged_args)
 
 
-parser_args = get_parser_args()
 verbose_log_file_name = path.join(path.dirname(path.abspath(__file__)),
                                   'log_debug_windows.txt')
 
@@ -189,10 +150,10 @@ def get_appropriate_kit(kits):
     log.info("Found Windows kits are: {}".format(kits))
     chosen_kit = {'version': "0", 'value': None}
     for kit in kits:
-        if (kit['version'] > chosen_kit['version'] and
+        if (kit['version'] > chosen_kit['version']
                 # version 8.1 is actually '81', so consider everything
                 # above version 20, as '2.0', etc.
-                kit['version'] < "20"):
+                and kit['version'] < "20"):
             chosen_kit = kit
     first_kit = kits[0]
     return first_kit
@@ -205,7 +166,8 @@ def get_cdb_and_gflags_path(kits):
     bits = 'x64' if (sys.maxsize > 2 ** 32) else 'x32'
     debuggers_path = path.join(first_path_path, 'Debuggers', bits)
     cdb_path = path.join(debuggers_path, 'cdb.exe')
-    if not path.exists(cdb_path): # Try for older "Debugging Tools" packages
+    # Try for older "Debugging Tools" packages
+    if not path.exists(cdb_path):
         debuggers_path = "C:\\Program Files\\Debugging Tools for Windows (x64)"
         cdb_path = path.join(debuggers_path, 'cdb.exe')
 
@@ -234,7 +196,7 @@ def toggle_loader_snaps(executable_name, gflags_path, enable=True):
         output = subprocess.check_output(gflags_args, stderr=subprocess.STDOUT,
                                          universal_newlines=True)
         log.info(output)
-    except exceptions.WindowsError as e:
+    except WindowsError as e:
         log.error("\nRunning {} exited with exception: "
                   "\n{}".format(gflags_args, e))
         exit(1)
@@ -249,7 +211,7 @@ def find_error_like_snippets(content):
     lines = content.splitlines()
     context_lines = 4
 
-    def error_predicate(l):
+    def error_predicate(line):
         # A list of mostly false positives are filtered out.
         # For deeper inspection, the full log exists.
         errors = {'errorhandling',
@@ -267,8 +229,8 @@ def find_error_like_snippets(content):
                   'ERR_get_error',
                   ('ERROR: Module load completed but symbols could '
                    'not be loaded')}
-        return (re.search('error', l, re.IGNORECASE)
-                and all(e not in l for e in errors))
+        return (re.search('error', line, re.IGNORECASE)
+                and all(e not in line for e in errors))
 
     for i in range(1, len(lines)):
         line = lines[i]
@@ -338,13 +300,13 @@ def test_run_import_qt_core_under_cdb_with_gflags():
     # The 2+2 is just ensure that Python itself works.
     python_code = """
 print(">>>>>>>>>>>>>>>>>>>>>>> Test computation of 2+2 is: {}".format(2+2))
-import PySide2.QtCore
-print(">>>>>>>>>>>>>>>>>>>>>>> QtCore object instance: {}".format(PySide2.QtCore))
+import PySide6.QtCore
+print(">>>>>>>>>>>>>>>>>>>>>>> QtCore object instance: {}".format(PySide6.QtCore))
 """
     call_command_under_cdb_with_gflags(sys.executable, ["-c", python_code])
 
 
-def handle_args():
+def handle_args(parser_args):
     if not parser_args.args:
         test_run_import_qt_core_under_cdb_with_gflags()
     else:
@@ -357,9 +319,12 @@ if __name__ == '__main__':
         log.error("This script only works on Windows.")
         exit(1)
 
+    parser, parser_args = get_parser_args()
+
     if is_admin():
-        handle_args()
+        handle_args(parser_args)
     else:
         log.error("Please rerun the script with administrator privileges. "
                   "It is required for gflags.exe to work. ")
+        parser.print_help()
         exit(1)

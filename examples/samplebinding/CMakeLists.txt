@@ -1,5 +1,8 @@
-cmake_minimum_required(VERSION 3.1)
-cmake_policy(VERSION 3.1)
+# Copyright (C) 2023 The Qt Company Ltd.
+# SPDX-License-Identifier: BSD-3-Clause
+
+cmake_minimum_required(VERSION 3.18)
+cmake_policy(VERSION 3.18)
 
 # Enable policy to not use RPATH settings for install_name on macOS.
 if(POLICY CMP0068)
@@ -11,8 +14,8 @@ project(SampleBinding)
 
 # ================================ General configuration ======================================
 
-# Set CPP standard to C++11 minimum.
-set(CMAKE_CXX_STANDARD 11)
+# Set CPP standard to C++17 minimum.
+set(CMAKE_CXX_STANDARD 17)
 
 # The sample library for which we will create bindings. You can change the name to something
 # relevant for your project.
@@ -42,13 +45,27 @@ set(generated_sources
 # ================================== Shiboken detection ======================================
 # Use provided python interpreter if given.
 if(NOT python_interpreter)
-    find_program(python_interpreter "python")
+    if(WIN32 AND "${CMAKE_BUILD_TYPE}" STREQUAL "Debug")
+        find_program(python_interpreter "python_d")
+        if(NOT python_interpreter)
+            message(FATAL_ERROR
+                "A debug Python interpreter could not be found, which is a requirement when "
+                "building this example in a debug configuration. Make sure python_d.exe is in "
+                "PATH.")
+        endif()
+    else()
+        find_program(python_interpreter "python")
+        if(NOT python_interpreter)
+            message(FATAL_ERROR
+                "No Python interpreter could be found. Make sure python is in PATH.")
+        endif()
+    endif()
 endif()
 message(STATUS "Using python interpreter: ${python_interpreter}")
 
 # Macro to get various pyside / python include / link flags and paths.
-# Uses the not entirely supported utils/pyside2_config.py file.
-macro(pyside2_config option output_var)
+# Uses the not entirely supported utils/pyside_config.py file.
+macro(pyside_config option output_var)
     if(${ARGC} GREATER 2)
         set(is_list ${ARGV2})
     else()
@@ -56,13 +73,13 @@ macro(pyside2_config option output_var)
     endif()
 
     execute_process(
-      COMMAND ${python_interpreter} "${CMAKE_SOURCE_DIR}/../utils/pyside2_config.py"
+      COMMAND ${python_interpreter} "${CMAKE_SOURCE_DIR}/../utils/pyside_config.py"
               ${option}
       OUTPUT_VARIABLE ${output_var}
       OUTPUT_STRIP_TRAILING_WHITESPACE)
 
     if ("${${output_var}}" STREQUAL "")
-        message(FATAL_ERROR "Error: Calling pyside2_config.py ${option} returned no output.")
+        message(FATAL_ERROR "Error: Calling pyside_config.py ${option} returned no output.")
     endif()
     if(is_list)
         string (REPLACE " " ";" ${output_var} "${${output_var}}")
@@ -70,14 +87,14 @@ macro(pyside2_config option output_var)
 endmacro()
 
 # Query for the shiboken generator path, Python path, include paths and linker flags.
-pyside2_config(--shiboken2-module-path shiboken2_module_path)
-pyside2_config(--shiboken2-generator-path shiboken2_generator_path)
-pyside2_config(--python-include-path python_include_dir)
-pyside2_config(--shiboken2-generator-include-path shiboken_include_dir 1)
-pyside2_config(--shiboken2-module-shared-libraries-cmake shiboken_shared_libraries 0)
-pyside2_config(--python-link-flags-cmake python_linking_data 0)
+pyside_config(--shiboken-module-path shiboken_module_path)
+pyside_config(--shiboken-generator-path shiboken_generator_path)
+pyside_config(--python-include-path python_include_dir)
+pyside_config(--shiboken-generator-include-path shiboken_include_dir 1)
+pyside_config(--shiboken-module-shared-libraries-cmake shiboken_shared_libraries 0)
+pyside_config(--python-link-flags-cmake python_linking_data 0)
 
-set(shiboken_path "${shiboken2_generator_path}/shiboken2${CMAKE_EXECUTABLE_SUFFIX}")
+set(shiboken_path "${shiboken_generator_path}/shiboken6${CMAKE_EXECUTABLE_SUFFIX}")
 if(NOT EXISTS ${shiboken_path})
     message(FATAL_ERROR "Shiboken executable not found at path: ${shiboken_path}")
 endif()
@@ -93,7 +110,7 @@ endif()
 # Enable rpaths so that the built shared libraries find their dependencies.
 set(CMAKE_SKIP_BUILD_RPATH FALSE)
 set(CMAKE_BUILD_WITH_INSTALL_RPATH TRUE)
-set(CMAKE_INSTALL_RPATH ${shiboken2_module_path} ${CMAKE_CURRENT_SOURCE_DIR})
+set(CMAKE_INSTALL_RPATH ${shiboken_module_path} ${CMAKE_CURRENT_SOURCE_DIR})
 set(CMAKE_INSTALL_RPATH_USE_LINK_PATH TRUE)
 # =============================================================================================
 # !!! End of dubious section.
@@ -118,7 +135,7 @@ target_compile_definitions(${sample_library} PRIVATE BINDINGS_BUILD)
 
 # Set up the options to pass to shiboken.
 set(shiboken_options --generator-set=shiboken --enable-parent-ctor-heuristic
-    --enable-return-value-heuristic --use-isnull-as-nb_nonzero
+    --enable-return-value-heuristic --use-isnull-as-nb-bool
     --avoid-protected-hack
     -I${CMAKE_SOURCE_DIR}
     -T${CMAKE_SOURCE_DIR}
@@ -159,7 +176,11 @@ set_property(TARGET ${bindings_library} PROPERTY PREFIX "")
 set_property(TARGET ${bindings_library} PROPERTY OUTPUT_NAME
              "${bindings_library}${PYTHON_EXTENSION_SUFFIX}")
 if(WIN32)
-    set_property(TARGET ${bindings_library} PROPERTY SUFFIX ".pyd")
+    if("${CMAKE_BUILD_TYPE}" STREQUAL "Debug")
+        set_property(TARGET ${bindings_library} PROPERTY SUFFIX "_d.pyd")
+    else()
+        set_property(TARGET ${bindings_library} PROPERTY SUFFIX ".pyd")
+    endif()
 endif()
 
 # Make sure the linker doesn't complain about not finding Python symbols on macOS.
@@ -191,7 +212,7 @@ if(WIN32)
     # Circumvent some "#pragma comment(lib)"s in "include/pyconfig.h" which might force to link
     # against a wrong python shared library.
 
-    set(python_versions_list 3 32 33 34 35 36 37 38)
+    set(python_versions_list 3 36 37 38 39)
     set(python_additional_link_flags "")
     foreach(ver ${python_versions_list})
         set(python_additional_link_flags
@@ -204,7 +225,7 @@ if(WIN32)
                            PROPERTIES LINK_FLAGS "${python_additional_link_flags}")
 
     # Compile a list of shiboken shared libraries to be installed, so that
-    # the user doesn't have to set the PATH manually to point to the PySide2 package.
+    # the user doesn't have to set the PATH manually to point to the PySide6 package.
     foreach(library_path ${shiboken_shared_libraries})
         string(REGEX REPLACE ".lib$" ".dll" library_path ${library_path})
         file(TO_CMAKE_PATH ${library_path} library_path)
@@ -224,7 +245,7 @@ endif()
 install(TARGETS ${bindings_library} ${sample_library}
         LIBRARY DESTINATION ${CMAKE_CURRENT_SOURCE_DIR}
         RUNTIME DESTINATION ${CMAKE_CURRENT_SOURCE_DIR}
-        )    
+        )
 install(FILES ${windows_shiboken_shared_libraries} DESTINATION ${CMAKE_CURRENT_SOURCE_DIR})
 # =============================================================================================
 # !!! End of dubious section.

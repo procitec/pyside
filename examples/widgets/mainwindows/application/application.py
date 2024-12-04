@@ -1,273 +1,261 @@
+# Copyright (C) 2013 Riverbank Computing Limited.
+# Copyright (C) 2022 The Qt Company Ltd.
+# SPDX-License-Identifier: LicenseRef-Qt-Commercial OR BSD-3-Clause
+from __future__ import annotations
 
-#############################################################################
-##
-## Copyright (C) 2013 Riverbank Computing Limited.
-## Copyright (C) 2016 The Qt Company Ltd.
-## Contact: http://www.qt.io/licensing/
-##
-## This file is part of the Qt for Python examples of the Qt Toolkit.
-##
-## $QT_BEGIN_LICENSE:BSD$
-## You may use this file under the terms of the BSD license as follows:
-##
-## "Redistribution and use in source and binary forms, with or without
-## modification, are permitted provided that the following conditions are
-## met:
-##   * Redistributions of source code must retain the above copyright
-##     notice, this list of conditions and the following disclaimer.
-##   * Redistributions in binary form must reproduce the above copyright
-##     notice, this list of conditions and the following disclaimer in
-##     the documentation and/or other materials provided with the
-##     distribution.
-##   * Neither the name of The Qt Company Ltd nor the names of its
-##     contributors may be used to endorse or promote products derived
-##     from this software without specific prior written permission.
-##
-##
-## THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
-## "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
-## LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
-## A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
-## OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
-## SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
-## LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
-## DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
-## THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-## (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
-## OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE."
-##
-## $QT_END_LICENSE$
-##
-#############################################################################
+from argparse import ArgumentParser, RawTextHelpFormatter
+import sys
 
-from PySide2 import QtCore, QtGui, QtWidgets
+from PySide6.QtCore import (QByteArray, QFile, QFileInfo, QSaveFile, QSettings,
+                            QTextStream, Qt, Slot)
+from PySide6.QtGui import QAction, QIcon, QKeySequence
+from PySide6.QtWidgets import (QApplication, QFileDialog, QMainWindow,
+                               QMessageBox, QTextEdit)
 
-import application_rc
+import application_rc  # noqa: F401
 
-class MainWindow(QtWidgets.QMainWindow):
+
+class MainWindow(QMainWindow):
     def __init__(self):
-        super(MainWindow, self).__init__()
+        super().__init__()
 
-        self.curFile = ''
+        self._cur_file = ''
 
-        self.textEdit = QtWidgets.QTextEdit()
-        self.setCentralWidget(self.textEdit)
+        self._text_edit = QTextEdit()
+        self.setCentralWidget(self._text_edit)
 
-        self.createActions()
-        self.createMenus()
-        self.createToolBars()
-        self.createStatusBar()
+        self.create_actions()
+        self.create_menus()
+        self.create_tool_bars()
+        self.create_status_bar()
 
-        self.readSettings()
+        self.read_settings()
 
-        self.textEdit.document().contentsChanged.connect(self.documentWasModified)
+        self._text_edit.document().contentsChanged.connect(self.document_was_modified)
 
-        self.setCurrentFile('')
+        self.set_current_file('')
         self.setUnifiedTitleAndToolBarOnMac(True)
 
     def closeEvent(self, event):
-        if self.maybeSave():
-            self.writeSettings()
+        if self.maybe_save():
+            self.write_settings()
             event.accept()
         else:
             event.ignore()
 
-    def newFile(self):
-        if self.maybeSave():
-            self.textEdit.clear()
-            self.setCurrentFile('')
+    @Slot()
+    def new_file(self):
+        if self.maybe_save():
+            self._text_edit.clear()
+            self.set_current_file('')
 
+    @Slot()
     def open(self):
-        if self.maybeSave():
-            fileName, filtr = QtWidgets.QFileDialog.getOpenFileName(self)
+        if self.maybe_save():
+            fileName, filtr = QFileDialog.getOpenFileName(self)
             if fileName:
-                self.loadFile(fileName)
+                self.load_file(fileName)
 
+    @Slot()
     def save(self):
-        if self.curFile:
-            return self.saveFile(self.curFile)
+        if self._cur_file:
+            return self.save_file(self._cur_file)
 
-        return self.saveAs()
+        return self.save_as()
 
-    def saveAs(self):
-        fileName, filtr = QtWidgets.QFileDialog.getSaveFileName(self)
+    @Slot()
+    def save_as(self):
+        fileName, filtr = QFileDialog.getSaveFileName(self)
         if fileName:
-            return self.saveFile(fileName)
+            return self.save_file(fileName)
 
         return False
 
+    @Slot()
     def about(self):
-        QtWidgets.QMessageBox.about(self, "About Application",
-                "The <b>Application</b> example demonstrates how to write "
-                "modern GUI applications using Qt, with a menu bar, "
-                "toolbars, and a status bar.")
+        QMessageBox.about(self, "About Application",
+                          "The <b>Application</b> example demonstrates how to write "
+                          "modern GUI applications using Qt, with a menu bar, "
+                          "toolbars, and a status bar.")
 
-    def documentWasModified(self):
-        self.setWindowModified(self.textEdit.document().isModified())
+    @Slot()
+    def document_was_modified(self):
+        self.setWindowModified(self._text_edit.document().isModified())
 
-    def createActions(self):
-        self.newAct = QtWidgets.QAction(QtGui.QIcon(':/images/new.png'), "&New",
-                self, shortcut=QtGui.QKeySequence.New,
-                statusTip="Create a new file", triggered=self.newFile)
+    def create_actions(self):
+        icon = QIcon.fromTheme(QIcon.ThemeIcon.DocumentNew, QIcon(':/images/new.png'))
+        self._new_act = QAction(icon, "&New", self, shortcut=QKeySequence.New,
+                                statusTip="Create a new file", triggered=self.new_file)
 
-        self.openAct = QtWidgets.QAction(QtGui.QIcon(':/images/open.png'),
-                "&Open...", self, shortcut=QtGui.QKeySequence.Open,
-                statusTip="Open an existing file", triggered=self.open)
+        icon = QIcon.fromTheme(QIcon.ThemeIcon.DocumentOpen, QIcon(':/images/open.png'))
+        self._open_act = QAction(icon, "&Open...", self,
+                                 shortcut=QKeySequence.Open, statusTip="Open an existing file",
+                                 triggered=self.open)
 
-        self.saveAct = QtWidgets.QAction(QtGui.QIcon(':/images/save.png'),
-                "&Save", self, shortcut=QtGui.QKeySequence.Save,
-                statusTip="Save the document to disk", triggered=self.save)
+        icon = QIcon.fromTheme(QIcon.ThemeIcon.DocumentSave, QIcon(':/images/save.png'))
+        self._save_act = QAction(icon, "&Save", self,
+                                 shortcut=QKeySequence.Save,
+                                 statusTip="Save the document to disk", triggered=self.save)
 
-        self.saveAsAct = QtWidgets.QAction("Save &As...", self,
-                shortcut=QtGui.QKeySequence.SaveAs,
-                statusTip="Save the document under a new name",
-                triggered=self.saveAs)
+        self._save_as_act = QAction("Save &As...", self,
+                                    shortcut=QKeySequence.SaveAs,
+                                    statusTip="Save the document under a new name",
+                                    triggered=self.save_as)
 
-        self.exitAct = QtWidgets.QAction("E&xit", self, shortcut="Ctrl+Q",
-                statusTip="Exit the application", triggered=self.close)
+        icon = QIcon.fromTheme(QIcon.ThemeIcon.ApplicationExit)
+        self._exit_act = QAction(icon, "E&xit", self, shortcut="Ctrl+Q",
+                                 statusTip="Exit the application", triggered=self.close)
 
-        self.cutAct = QtWidgets.QAction(QtGui.QIcon(':/images/cut.png'), "Cu&t",
-                self, shortcut=QtGui.QKeySequence.Cut,
-                statusTip="Cut the current selection's contents to the clipboard",
-                triggered=self.textEdit.cut)
+        icon = QIcon.fromTheme(QIcon.ThemeIcon.EditCut, QIcon(':/images/cut.png'))
+        self._cut_act = QAction(icon, "Cu&t", self, shortcut=QKeySequence.Cut,
+                                statusTip="Cut the current selection's contents to the clipboard",
+                                triggered=self._text_edit.cut)
 
-        self.copyAct = QtWidgets.QAction(QtGui.QIcon(':/images/copy.png'),
-                "&Copy", self, shortcut=QtGui.QKeySequence.Copy,
-                statusTip="Copy the current selection's contents to the clipboard",
-                triggered=self.textEdit.copy)
+        icon = QIcon.fromTheme(QIcon.ThemeIcon.EditCopy, QIcon(':/images/copy.png'))
+        self._copy_act = QAction(icon, "&Copy",
+                                 self, shortcut=QKeySequence.Copy,
+                                 statusTip="Copy the current selection's contents to the clipboard",
+                                 triggered=self._text_edit.copy)
 
-        self.pasteAct = QtWidgets.QAction(QtGui.QIcon(':/images/paste.png'),
-                "&Paste", self, shortcut=QtGui.QKeySequence.Paste,
-                statusTip="Paste the clipboard's contents into the current selection",
-                triggered=self.textEdit.paste)
+        icon = QIcon.fromTheme(QIcon.ThemeIcon.EditPaste, QIcon(':/images/paste.png'))
+        self._paste_act = QAction(icon, "&Paste",
+                                  self, shortcut=QKeySequence.Paste,
+                                  statusTip="Paste the clipboard's contents into the current "
+                                  "selection",
+                                  triggered=self._text_edit.paste)
 
-        self.aboutAct = QtWidgets.QAction("&About", self,
-                statusTip="Show the application's About box",
-                triggered=self.about)
+        icon = QIcon.fromTheme(QIcon.ThemeIcon.HelpAbout)
+        self._about_act = QAction(icon, "&About", self,
+                                  statusTip="Show the application's About box",
+                                  triggered=self.about)
 
-        self.aboutQtAct = QtWidgets.QAction("About &Qt", self,
-                statusTip="Show the Qt library's About box",
-                triggered=qApp.aboutQt)
+        self._about_qt_act = QAction("About &Qt", self,
+                                     statusTip="Show the Qt library's About box",
+                                     triggered=qApp.aboutQt)  # noqa: F821
 
-        self.cutAct.setEnabled(False)
-        self.copyAct.setEnabled(False)
-        self.textEdit.copyAvailable.connect(self.cutAct.setEnabled)
-        self.textEdit.copyAvailable.connect(self.copyAct.setEnabled)
+        self._cut_act.setEnabled(False)
+        self._copy_act.setEnabled(False)
+        self._text_edit.copyAvailable.connect(self._cut_act.setEnabled)
+        self._text_edit.copyAvailable.connect(self._copy_act.setEnabled)
 
-    def createMenus(self):
-        self.fileMenu = self.menuBar().addMenu("&File")
-        self.fileMenu.addAction(self.newAct)
-        self.fileMenu.addAction(self.openAct)
-        self.fileMenu.addAction(self.saveAct)
-        self.fileMenu.addAction(self.saveAsAct)
-        self.fileMenu.addSeparator()
-        self.fileMenu.addAction(self.exitAct)
+    def create_menus(self):
+        self._file_menu = self.menuBar().addMenu("&File")
+        self._file_menu.addAction(self._new_act)
+        self._file_menu.addAction(self._open_act)
+        self._file_menu.addAction(self._save_act)
+        self._file_menu.addAction(self._save_as_act)
+        self._file_menu.addSeparator()
+        self._file_menu.addAction(self._exit_act)
 
-        self.editMenu = self.menuBar().addMenu("&Edit")
-        self.editMenu.addAction(self.cutAct)
-        self.editMenu.addAction(self.copyAct)
-        self.editMenu.addAction(self.pasteAct)
+        self._edit_menu = self.menuBar().addMenu("&Edit")
+        self._edit_menu.addAction(self._cut_act)
+        self._edit_menu.addAction(self._copy_act)
+        self._edit_menu.addAction(self._paste_act)
 
         self.menuBar().addSeparator()
 
-        self.helpMenu = self.menuBar().addMenu("&Help")
-        self.helpMenu.addAction(self.aboutAct)
-        self.helpMenu.addAction(self.aboutQtAct)
+        self._help_menu = self.menuBar().addMenu("&Help")
+        self._help_menu.addAction(self._about_act)
+        self._help_menu.addAction(self._about_qt_act)
 
-    def createToolBars(self):
-        self.fileToolBar = self.addToolBar("File")
-        self.fileToolBar.addAction(self.newAct)
-        self.fileToolBar.addAction(self.openAct)
-        self.fileToolBar.addAction(self.saveAct)
+    def create_tool_bars(self):
+        self._file_tool_bar = self.addToolBar("File")
+        self._file_tool_bar.addAction(self._new_act)
+        self._file_tool_bar.addAction(self._open_act)
+        self._file_tool_bar.addAction(self._save_act)
 
-        self.editToolBar = self.addToolBar("Edit")
-        self.editToolBar.addAction(self.cutAct)
-        self.editToolBar.addAction(self.copyAct)
-        self.editToolBar.addAction(self.pasteAct)
+        self._edit_tool_bar = self.addToolBar("Edit")
+        self._edit_tool_bar.addAction(self._cut_act)
+        self._edit_tool_bar.addAction(self._copy_act)
+        self._edit_tool_bar.addAction(self._paste_act)
 
-    def createStatusBar(self):
+    def create_status_bar(self):
         self.statusBar().showMessage("Ready")
 
-    def readSettings(self):
-        settings = QtCore.QSettings('QtProject', 'Application Example')
-        geometry = settings.value('geometry', QtCore.QByteArray())
+    def read_settings(self):
+        settings = QSettings('QtProject', 'Application Example')
+        geometry = settings.value('geometry', QByteArray())
         if geometry.size():
             self.restoreGeometry(geometry)
 
-    def writeSettings(self):
-        settings = QtCore.QSettings('QtProject', 'Application Example')
+    def write_settings(self):
+        settings = QSettings('QtProject', 'Application Example')
         settings.setValue('geometry', self.saveGeometry())
 
-    def maybeSave(self):
-        if self.textEdit.document().isModified():
-            ret = QtWidgets.QMessageBox.warning(self, "Application",
-                    "The document has been modified.\nDo you want to save "
-                    "your changes?",
-                    QtWidgets.QMessageBox.Save | QtWidgets.QMessageBox.Discard |
-                    QtWidgets.QMessageBox.Cancel)
-            if ret == QtWidgets.QMessageBox.Save:
+    def maybe_save(self):
+        if self._text_edit.document().isModified():
+            ret = QMessageBox.warning(self, "Application",
+                                      "The document has been modified.\nDo you want to save "
+                                      "your changes?",
+                                      QMessageBox.Save | QMessageBox.Discard | QMessageBox.Cancel)
+            if ret == QMessageBox.Save:
                 return self.save()
-            elif ret == QtWidgets.QMessageBox.Cancel:
+            elif ret == QMessageBox.Cancel:
                 return False
         return True
 
-    def loadFile(self, fileName):
-        file = QtCore.QFile(fileName)
-        if not file.open(QtCore.QFile.ReadOnly | QtCore.QFile.Text):
-            QtWidgets.QMessageBox.warning(self, "Application",
-                    "Cannot read file %s:\n%s." % (fileName, file.errorString()))
+    def load_file(self, fileName):
+        file = QFile(fileName)
+        if not file.open(QFile.ReadOnly | QFile.Text):
+            reason = file.errorString()
+            QMessageBox.warning(self, "Application", f"Cannot read file {fileName}:\n{reason}.")
             return
 
-        inf = QtCore.QTextStream(file)
-        QtWidgets.QApplication.setOverrideCursor(QtCore.Qt.WaitCursor)
-        self.textEdit.setPlainText(inf.readAll())
-        QtWidgets.QApplication.restoreOverrideCursor()
+        inf = QTextStream(file)
+        with QApplication.setOverrideCursor(Qt.WaitCursor):
+            self._text_edit.setPlainText(inf.readAll())
 
-        self.setCurrentFile(fileName)
+        self.set_current_file(fileName)
         self.statusBar().showMessage("File loaded", 2000)
 
-    def saveFile(self, fileName):
+    def save_file(self, fileName):
         error = None
-        QtWidgets.QApplication.setOverrideCursor(QtCore.Qt.WaitCursor)
-        file = QtCore.QSaveFile(fileName)
-        if file.open(QtCore.QFile.WriteOnly | QtCore.QFile.Text):
-            outf = QtCore.QTextStream(file)
-            outf << self.textEdit.toPlainText()
-            if not file.commit():
-                error = "Cannot write file %s:\n%s." % (fileName, file.errorString())
-        else:
-            error = "Cannot open file %s:\n%s." % (fileName, file.errorString())
-        QtWidgets.QApplication.restoreOverrideCursor()
+        with QApplication.setOverrideCursor(Qt.WaitCursor):
+            file = QSaveFile(fileName)
+            if file.open(QFile.WriteOnly | QFile.Text):
+                outf = QTextStream(file)
+                outf << self._text_edit.toPlainText()
+                if not file.commit():
+                    reason = file.errorString()
+                    error = f"Cannot write file {fileName}:\n{reason}."
+            else:
+                reason = file.errorString()
+                error = f"Cannot open file {fileName}:\n{reason}."
 
         if error:
-            QtWidgets.QMessageBox.warning(self, "Application", error)
+            QMessageBox.warning(self, "Application", error)
             return False
 
-        self.setCurrentFile(fileName)
+        self.set_current_file(fileName)
         self.statusBar().showMessage("File saved", 2000)
         return True
 
-    def setCurrentFile(self, fileName):
-        self.curFile = fileName
-        self.textEdit.document().setModified(False)
+    def set_current_file(self, fileName):
+        self._cur_file = fileName
+        self._text_edit.document().setModified(False)
         self.setWindowModified(False)
 
-        if self.curFile:
-            shownName = self.strippedName(self.curFile)
+        if self._cur_file:
+            shown_name = self.stripped_name(self._cur_file)
         else:
-            shownName = 'untitled.txt'
+            shown_name = 'untitled.txt'
 
-        self.setWindowTitle("%s[*] - Application" % shownName)
+        self.setWindowTitle(f"{shown_name}[*] - Application")
 
-    def strippedName(self, fullFileName):
-        return QtCore.QFileInfo(fullFileName).fileName()
+    def stripped_name(self, fullFileName):
+        return QFileInfo(fullFileName).fileName()
 
 
 if __name__ == '__main__':
+    argument_parser = ArgumentParser(description='Application Example',
+                                     formatter_class=RawTextHelpFormatter)
+    argument_parser.add_argument("file", help="File",
+                                 nargs='?', type=str)
+    options = argument_parser.parse_args()
 
-    import sys
-
-    app = QtWidgets.QApplication(sys.argv)
-    mainWin = MainWindow()
-    mainWin.show()
-    sys.exit(app.exec_())
+    app = QApplication(sys.argv)
+    main_win = MainWindow()
+    if options.file:
+        main_win.load_file(options.file)
+    main_win.show()
+    sys.exit(app.exec())

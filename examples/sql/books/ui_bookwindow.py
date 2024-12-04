@@ -3,21 +3,26 @@
 ################################################################################
 ## Form generated from reading UI file 'bookwindow.ui'
 ##
-## Created by: Qt User Interface Compiler version 5.14.0
+## Created by: Qt User Interface Compiler version 6.8.0
 ##
 ## WARNING! All changes made in this file will be lost when recompiling UI file!
 ################################################################################
 
-from PySide2.QtCore import (QCoreApplication, QMetaObject, QObject, QPoint,
-    QRect, QSize, QUrl, Qt)
-from PySide2.QtGui import (QBrush, QColor, QConicalGradient, QFont,
-    QFontDatabase, QIcon, QLinearGradient, QPalette, QPainter, QPixmap,
-    QRadialGradient)
-from PySide2.QtWidgets import *
+from PySide6.QtCore import (QCoreApplication, QDate, QDateTime, QLocale,
+    QMetaObject, QObject, QPoint, QRect,
+    QSize, QTime, QUrl, Qt)
+from PySide6.QtGui import (QBrush, QColor, QConicalGradient, QCursor,
+    QFont, QFontDatabase, QGradient, QIcon,
+    QImage, QKeySequence, QLinearGradient, QPainter,
+    QPalette, QPixmap, QRadialGradient, QTransform)
+from PySide6.QtWidgets import (QAbstractItemView, QApplication, QComboBox, QFormLayout,
+    QGroupBox, QHeaderView, QLabel, QLineEdit,
+    QMainWindow, QSizePolicy, QSpinBox, QTableView,
+    QVBoxLayout, QWidget)
 
 class Ui_BookWindow(object):
     def setupUi(self, BookWindow):
-        if BookWindow.objectName():
+        if not BookWindow.objectName():
             BookWindow.setObjectName(u"BookWindow")
         BookWindow.resize(601, 420)
         self.centralWidget = QWidget(BookWindow)
@@ -34,7 +39,7 @@ class Ui_BookWindow(object):
         self.vboxLayout1.setContentsMargins(9, 9, 9, 9)
         self.bookTable = QTableView(self.groupBox)
         self.bookTable.setObjectName(u"bookTable")
-        self.bookTable.setSelectionBehavior(QAbstractItemView.SelectRows)
+        self.bookTable.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
 
         self.vboxLayout1.addWidget(self.bookTable)
 
@@ -127,3 +132,4 @@ class Ui_BookWindow(object):
         self.yearEdit.setPrefix("")
         self.label.setText(QCoreApplication.translate("BookWindow", u"<b>Rating:</b>", None))
     # retranslateUi
+

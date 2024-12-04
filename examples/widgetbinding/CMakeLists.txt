@@ -1,5 +1,8 @@
-cmake_minimum_required(VERSION 3.1)
-cmake_policy(VERSION 3.1)
+# Copyright (C) 2023 The Qt Company Ltd.
+# SPDX-License-Identifier: BSD-3-Clause
+
+cmake_minimum_required(VERSION 3.18)
+cmake_policy(VERSION 3.18)
 
 # Enable policy to not use RPATH settings for install_name on macOS.
 if(POLICY CMP0068)
@@ -15,12 +18,13 @@ endif()
 project(wiggly LANGUAGES CXX)
 set(CMAKE_INCLUDE_CURRENT_DIR ON)
 set(CMAKE_AUTOMOC ON)
-find_package(Qt5 5.12 REQUIRED COMPONENTS Core Gui Widgets)
+
+find_package(Qt6 COMPONENTS Core Gui Widgets)
 
 # ================================ General configuration ======================================
 
-# Set CPP standard to C++11 minimum.
-set(CMAKE_CXX_STANDARD 11)
+# Set CPP standard to C++17 minimum.
+set(CMAKE_CXX_STANDARD 17)
 
 # The wiggly library for which we will create bindings. You can change the name to something
 # relevant for your project.
@@ -49,13 +53,27 @@ set(generated_sources
 # ================================== Shiboken detection ======================================
 # Use provided python interpreter if given.
 if(NOT python_interpreter)
-    find_program(python_interpreter "python")
+    if(WIN32 AND "${CMAKE_BUILD_TYPE}" STREQUAL "Debug")
+        find_program(python_interpreter "python_d")
+        if(NOT python_interpreter)
+            message(FATAL_ERROR
+                "A debug Python interpreter could not be found, which is a requirement when "
+                "building this example in a debug configuration. Make sure python_d.exe is in "
+                "PATH.")
+        endif()
+    else()
+        find_program(python_interpreter "python")
+        if(NOT python_interpreter)
+            message(FATAL_ERROR
+                "No Python interpreter could be found. Make sure python is in PATH.")
+        endif()
+    endif()
 endif()
 message(STATUS "Using python interpreter: ${python_interpreter}")
 
 # Macro to get various pyside / python include / link flags and paths.
-# Uses the not entirely supported utils/pyside2_config.py file.
-macro(pyside2_config option output_var)
+# Uses the not entirely supported utils/pyside_config.py file.
+macro(pyside_config option output_var)
     if(${ARGC} GREATER 2)
         set(is_list ${ARGV2})
     else()
@@ -63,13 +81,13 @@ macro(pyside2_config option output_var)
     endif()
 
     execute_process(
-      COMMAND ${python_interpreter} "${CMAKE_SOURCE_DIR}/../utils/pyside2_config.py"
+      COMMAND ${python_interpreter} "${CMAKE_SOURCE_DIR}/../utils/pyside_config.py"
               ${option}
       OUTPUT_VARIABLE ${output_var}
       OUTPUT_STRIP_TRAILING_WHITESPACE)
 
     if ("${${output_var}}" STREQUAL "")
-        message(FATAL_ERROR "Error: Calling pyside2_config.py ${option} returned no output.")
+        message(FATAL_ERROR "Error: Calling pyside_config.py ${option} returned no output.")
     endif()
     if(is_list)
         string (REPLACE " " ";" ${output_var} "${${output_var}}")
@@ -77,17 +95,17 @@ macro(pyside2_config option output_var)
 endmacro()
 
 # Query for the shiboken generator path, Python path, include paths and linker flags.
-pyside2_config(--shiboken2-module-path shiboken2_module_path)
-pyside2_config(--shiboken2-generator-path shiboken2_generator_path)
-pyside2_config(--pyside2-path pyside2_path)
-pyside2_config(--pyside2-include-path pyside2_include_dir 1)
-pyside2_config(--python-include-path python_include_dir)
-pyside2_config(--shiboken2-generator-include-path shiboken_include_dir 1)
-pyside2_config(--shiboken2-module-shared-libraries-cmake shiboken_shared_libraries 0)
-pyside2_config(--python-link-flags-cmake python_linking_data 0)
-pyside2_config(--pyside2-shared-libraries-cmake pyside2_shared_libraries 0)
+pyside_config(--shiboken-module-path shiboken_module_path)
+pyside_config(--shiboken-generator-path shiboken_generator_path)
+pyside_config(--pyside-path pyside_path)
+pyside_config(--pyside-include-path pyside_include_dir 1)
+pyside_config(--python-include-path python_include_dir)
+pyside_config(--shiboken-generator-include-path shiboken_include_dir 1)
+pyside_config(--shiboken-module-shared-libraries-cmake shiboken_shared_libraries 0)
+pyside_config(--python-link-flags-cmake python_linking_data 0)
+pyside_config(--pyside-shared-libraries-cmake pyside_shared_libraries 0)
 
-set(shiboken_path "${shiboken2_generator_path}/shiboken2${CMAKE_EXECUTABLE_SUFFIX}")
+set(shiboken_path "${shiboken_generator_path}/shiboken6${CMAKE_EXECUTABLE_SUFFIX}")
 if(NOT EXISTS ${shiboken_path})
     message(FATAL_ERROR "Shiboken executable not found at path: ${shiboken_path}")
 endif()
@@ -103,7 +121,7 @@ endif()
 # Enable rpaths so that the built shared libraries find their dependencies.
 set(CMAKE_SKIP_BUILD_RPATH FALSE)
 set(CMAKE_BUILD_WITH_INSTALL_RPATH TRUE)
-set(CMAKE_INSTALL_RPATH ${shiboken2_module_path} ${CMAKE_CURRENT_SOURCE_DIR})
+set(CMAKE_INSTALL_RPATH ${shiboken_module_path} ${CMAKE_CURRENT_SOURCE_DIR})
 set(CMAKE_INSTALL_RPATH_USE_LINK_PATH TRUE)
 # =============================================================================================
 # !!! End of dubious section.
@@ -113,31 +131,28 @@ set(CMAKE_INSTALL_RPATH_USE_LINK_PATH TRUE)
 # =============================== CMake target - wiggly_library ===============================
 
 
-# Get all relevant Qt include dirs, to pass them on to shiboken.
-get_property(QT_CORE_INCLUDE_DIRS TARGET Qt5::Core PROPERTY INTERFACE_INCLUDE_DIRECTORIES)
-get_property(QT_GUI_INCLUDE_DIRS TARGET Qt5::Gui PROPERTY INTERFACE_INCLUDE_DIRECTORIES)
-get_property(QT_WIDGETS_INCLUDE_DIRS TARGET Qt5::Widgets PROPERTY INTERFACE_INCLUDE_DIRECTORIES)
-set(QT_INCLUDE_DIRS ${QT_CORE_INCLUDE_DIRS} ${QT_GUI_INCLUDE_DIRS} ${QT_WIDGETS_INCLUDE_DIRS})
+# Get the relevant Qt include dirs, to pass them on to shiboken.
+get_property(QT_WIDGETS_INCLUDE_DIRS TARGET Qt6::Widgets PROPERTY INTERFACE_INCLUDE_DIRECTORIES)
 set(INCLUDES "")
-foreach(INCLUDE_DIR ${QT_INCLUDE_DIRS})
+foreach(INCLUDE_DIR ${QT_WIDGETS_INCLUDE_DIRS})
     list(APPEND INCLUDES "-I${INCLUDE_DIR}")
 endforeach()
 
 # On macOS, check if Qt is a framework build. This affects how include paths should be handled.
-get_target_property(QtCore_is_framework Qt5::Core FRAMEWORK)
+get_target_property(QtCore_is_framework Qt6::Core FRAMEWORK)
 if (QtCore_is_framework)
-    get_target_property(qt_core_library_location Qt5::Core LOCATION)
+    get_target_property(qt_core_library_location Qt6::Core LOCATION)
     get_filename_component(qt_core_library_location_dir "${qt_core_library_location}" DIRECTORY)
     get_filename_component(lib_dir "${qt_core_library_location_dir}/../" ABSOLUTE)
     list(APPEND INCLUDES "--framework-include-paths=${lib_dir}")
 endif()
 
 # We need to include the headers for the module bindings that we use.
-set(pyside2_additional_includes "")
-foreach(INCLUDE_DIR ${pyside2_include_dir})
-    list(APPEND pyside2_additional_includes "${INCLUDE_DIR}/QtCore")
-    list(APPEND pyside2_additional_includes "${INCLUDE_DIR}/QtGui")
-    list(APPEND pyside2_additional_includes "${INCLUDE_DIR}/QtWidgets")
+set(pyside_additional_includes "")
+foreach(INCLUDE_DIR ${pyside_include_dir})
+    list(APPEND pyside_additional_includes "${INCLUDE_DIR}/QtCore")
+    list(APPEND pyside_additional_includes "${INCLUDE_DIR}/QtGui")
+    list(APPEND pyside_additional_includes "${INCLUDE_DIR}/QtWidgets")
 endforeach()
 
 
@@ -161,7 +176,7 @@ set(shiboken_options --generator-set=shiboken --enable-parent-ctor-heuristic
     ${INCLUDES}
     -I${CMAKE_SOURCE_DIR}
     -T${CMAKE_SOURCE_DIR}
-    -T${pyside2_path}/typesystems
+    -T${pyside_path}/typesystems
     --output-directory=${CMAKE_CURRENT_BINARY_DIR}
     )
 
@@ -188,15 +203,15 @@ add_library(${bindings_library} SHARED ${${bindings_library}_sources})
 
 
 # Apply relevant include and link flags.
-target_include_directories(${bindings_library} PRIVATE ${pyside2_additional_includes})
-target_include_directories(${bindings_library} PRIVATE ${pyside2_include_dir})
+target_include_directories(${bindings_library} PRIVATE ${pyside_additional_includes})
+target_include_directories(${bindings_library} PRIVATE ${pyside_include_dir})
 target_include_directories(${bindings_library} PRIVATE ${python_include_dir})
 target_include_directories(${bindings_library} PRIVATE ${shiboken_include_dir})
 
-target_link_libraries(${wiggly_library} PRIVATE Qt5::Widgets)
-target_link_libraries(${bindings_library} PRIVATE Qt5::Widgets)
+target_link_libraries(${wiggly_library} PRIVATE Qt6::Widgets)
+target_link_libraries(${bindings_library} PRIVATE Qt6::Widgets)
 target_link_libraries(${bindings_library} PRIVATE ${wiggly_library})
-target_link_libraries(${bindings_library} PRIVATE ${pyside2_shared_libraries})
+target_link_libraries(${bindings_library} PRIVATE ${pyside_shared_libraries})
 target_link_libraries(${bindings_library} PRIVATE ${shiboken_shared_libraries})
 
 # Adjust the name of generated module.
@@ -204,7 +219,11 @@ set_property(TARGET ${bindings_library} PROPERTY PREFIX "")
 set_property(TARGET ${bindings_library} PROPERTY OUTPUT_NAME
              "${bindings_library}${PYTHON_EXTENSION_SUFFIX}")
 if(WIN32)
-    set_property(TARGET ${bindings_library} PROPERTY SUFFIX ".pyd")
+    if("${CMAKE_BUILD_TYPE}" STREQUAL "Debug")
+        set_property(TARGET ${bindings_library} PROPERTY SUFFIX "_d.pyd")
+    else()
+        set_property(TARGET ${bindings_library} PROPERTY SUFFIX ".pyd")
+    endif()
 endif()
 
 # Make sure the linker doesn't complain about not finding Python symbols on macOS.
@@ -235,7 +254,7 @@ if(WIN32)
     # Circumvent some "#pragma comment(lib)"s in "include/pyconfig.h" which might force to link
     # against a wrong python shared library.
 
-    set(python_versions_list 3 32 33 34 35 36 37 38)
+    set(python_versions_list 3 36 37 38 39)
     set(python_additional_link_flags "")
     foreach(ver ${python_versions_list})
         set(python_additional_link_flags
@@ -248,7 +267,7 @@ if(WIN32)
                            PROPERTIES LINK_FLAGS "${python_additional_link_flags}")
 
     # Compile a list of shiboken shared libraries to be installed, so that
-    # the user doesn't have to set the PATH manually to point to the PySide2 package.
+    # the user doesn't have to set the PATH manually to point to the PySide package.
     foreach(library_path ${shiboken_shared_libraries})
         string(REGEX REPLACE ".lib$" ".dll" library_path ${library_path})
         file(TO_CMAKE_PATH ${library_path} library_path)

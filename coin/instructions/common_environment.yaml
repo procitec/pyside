@@ -1,6 +1,28 @@
 type: Group
 instructions:
     - type: EnvironmentVariable
+      variableName: QTEST_ENVIRONMENT
+      variableValue: "ci"
+    - type: EnvironmentVariable
+      variableName: PYSIDE_VIRTUALENV
+      variableValue: "{{.AgentWorkingDir}}\\pyside\\pyside-setup\\env"
+      enable_if:
+          condition: property
+          property: host.os
+          equals_value: Windows
+    - type: EnvironmentVariable
+      variableName: PYSIDE_VIRTUALENV
+      variableValue: "{{.AgentWorkingDir}}/pyside/pyside-setup/env"
+      enable_if:
+        condition: or
+        conditions:
+          - condition: property
+            property: host.os
+            equals_value: MacOS
+          - condition: property
+            property: host.os
+            equals_value: Linux
+    - type: EnvironmentVariable
       variableName: TARGET_ARCHITECTURE
       variableValue: amd64
       enable_if:
@@ -9,6 +31,18 @@ instructions:
           - condition: property
             property: target.arch
             equals_value: X86_64
+          - condition: property
+            property: host.os
+            equals_value: Windows
+    - type: EnvironmentVariable
+      variableName: PYTHON3_PATH
+      variableValue: "{{ index .Env \"PYTHON3.10.0-64_PATH\"}}"
+      enable_if:
+        condition: and
+        conditions:
+          - condition: property
+            property: host.osVersion
+            equals_value: Windows_11_22H2
           - condition: property
             property: host.os
             equals_value: Windows
@@ -46,6 +80,13 @@ instructions:
           property: features
           contains_value: Packaging
     - type: EnvironmentVariable
+      variableName: CI_USE_SCCACHE
+      variableValue: "--compiler-launcher=sccache"
+      enable_if:
+          condition: property
+          property: features
+          contains_value: Sccache
+    - type: EnvironmentVariable
       variableName: CI_OS
       variableValue: "MacOS"
       enable_if:
@@ -82,6 +123,41 @@ instructions:
          equals_value: Windows
     - type: PrependToEnvironmentVariable
       variableName: PATH
+      variableValue: "{{.Env.PYTHON3_PATH}}/bin:"
+      enable_if:
+         condition: property
+         property: host.os
+         equals_value: MacOS
+    - type: PrependToEnvironmentVariable
+      variableName: PATH
+      variableValue: "{{ index .Env \"PYTHON3.10.0-64_PATH\"}};"
+      enable_if:
+         condition: property
+         property: host.os
+         equals_value: Windows
+    - type: PrependToEnvironmentVariable
+      variableName: PATH
+      variableValue: "/Users/qt/.local/bin/:"
+      enable_if:
+         condition: property
+         property: host.os
+         equals_value: MacOS
+    - type: PrependToEnvironmentVariable
+      variableName: PATH
+      variableValue: "/Users/qt/work/install/bin:"
+      enable_if:
+         condition: property
+         property: host.os
+         equals_value: MacOS
+    - type: PrependToEnvironmentVariable
+      variableName: PATH
+      variableValue: "/home/qt/work/install/bin:"
+      enable_if:
+         condition: property
+         property: host.os
+         equals_value: Linux
+    - type: PrependToEnvironmentVariable
+      variableName: PATH
       variableValue: "\\Users\\qt\\work\\install\\bin;"
       enable_if:
          condition: property
@@ -115,10 +191,132 @@ instructions:
          condition: property
          property: target.compiler
          equals_value: ICC_18
+    - type: ExecuteCommand
+      command: "sudo apt-get install python3-pip -y"
+      maxTimeInSeconds: 14400
+      maxTimeBetweenOutput: 1200
+      enable_if:
+          condition: and
+          conditions:
+            - condition: property
+              property: host.os
+              equals_value: Linux
+            - condition: property
+              property: host.arch
+              equals_value: AARCH64
+      userMessageOnFailure: >
+          Failed to install dependencies
+    - type: ExecuteCommand
+      command: "chmod +x coin/fetch_libclang_arm64.sh"
+      maxTimeInSeconds: 14400
+      maxTimeBetweenOutput: 1200
+      enable_if:
+          condition: and
+          conditions:
+            - condition: property
+              property: host.os
+              equals_value: Linux
+            - condition: property
+              property: host.arch
+              equals_value: AARCH64
+      userMessageOnFailure: >
+          Failed to make coin/fetch_libclang_arm64.sh executable
+    - type: ExecuteCommand
+      command: "coin/fetch_libclang_arm64.sh"
+      maxTimeInSeconds: 14400
+      maxTimeBetweenOutput: 1200
+      enable_if:
+          condition: and
+          conditions:
+            - condition: property
+              property: host.os
+              equals_value: Linux
+            - condition: property
+              property: host.arch
+              equals_value: AARCH64
+      userMessageOnFailure: >
+          Failed to download libclang from Qt servers
     - type: EnvironmentVariable
       variableName: LLVM_INSTALL_DIR
-      variableValue: "{{.Env.LLVM_DYNAMIC_LIBS_100}}"
-      disable_if:
+      variableValue: "/home/qt/libclang"
+      enable_if:
+        condition: and
+        conditions:
+          - condition: property
+            property: target.arch
+            equals_value: AARCH64
+          - condition: property
+            property: host.os
+            equals_value: Linux
+    - type: EnvironmentVariable
+      variableName: interpreter
+      variableValue: "python3.11"
+      enable_if:
          condition: property
          property: host.osVersion
-         equals_value: openSUSE_15_1
+         in_values: [RHEL_8_6, RHEL_8_8, RHEL_8_10]
+    - type: EnvironmentVariable
+      variableName: interpreter
+      variableValue: "python3"
+      enable_if: # Enable for others than rhl 8.*
+        condition: property
+        property: host.osVersion
+        not_in_values: [RHEL_8_6, RHEL_8_8, RHEL_8_10]
+    # ToDo: can be removed after 3.11 is available on qt5#3.8 on macOS
+    # start of ToDo
+    - type: ExecuteCommand
+      command: "tools/install-p311.sh"
+      maxTimeInSeconds: 14400
+      maxTimeBetweenOutput: 1200
+      ignoreExitCode: true
+      enable_if:
+          condition: and
+          conditions:
+          - condition: property
+            property: host.os
+            equals_value: MacOS
+          - condition: property
+            property: target.os
+            equals_value: Android
+      userMessageOnFailure: >
+          Failed to install python 3.11
+    - type: PrependToEnvironmentVariable
+      variableName: PATH
+      variableValue: "/Users/qt/python311/bin:"
+      enable_if:
+          condition: and
+          conditions:
+          - condition: property
+            property: host.os
+            equals_value: MacOS
+          - condition: property
+            property: target.os
+            equals_value: Android
+    # end of ToDo
+    - type: ExecuteCommand
+      command: "virtualenv -p {{.Env.interpreter}} {{.AgentWorkingDir}}/env"
+      maxTimeInSeconds: 14400
+      maxTimeBetweenOutput: 1200
+      enable_if:
+          condition: or
+          conditions:
+          - condition: property
+            property: host.os
+            equals_value: Linux
+          - condition: property
+            property: host.os
+            equals_value: MacOS
+      userMessageOnFailure: >
+          Failed to create env
+    - type: EnvironmentVariable
+      variableName: ENV_PYTHON
+      variableValue: "{{.AgentWorkingDir}}/env/bin/python"
+    - type: AppendToEnvironmentVariable
+      variableName: PATH
+      variableValue: ":{{.AgentWorkingDir}}/env/bin/"
+      enable_if: # Enable for others than rhl 8.*
+        condition: property
+        property: target.os
+        equals_value: Android
+
+

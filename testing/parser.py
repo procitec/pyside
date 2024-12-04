@@ -1,48 +1,11 @@
-#############################################################################
-##
-## Copyright (C) 2017 The Qt Company Ltd.
-## Contact: https://www.qt.io/licensing/
-##
-## This file is part of Qt for Python.
-##
-## $QT_BEGIN_LICENSE:LGPL$
-## Commercial License Usage
-## Licensees holding valid commercial Qt licenses may use this file in
-## accordance with the commercial license agreement provided with the
-## Software or, alternatively, in accordance with the terms contained in
-## a written agreement between you and The Qt Company. For licensing terms
-## and conditions see https://www.qt.io/terms-conditions. For further
-## information use the contact form at https://www.qt.io/contact-us.
-##
-## GNU Lesser General Public License Usage
-## Alternatively, this file may be used under the terms of the GNU Lesser
-## General Public License version 3 as published by the Free Software
-## Foundation and appearing in the file LICENSE.LGPL3 included in the
-## packaging of this file. Please review the following information to
-## ensure the GNU Lesser General Public License version 3 requirements
-## will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-##
-## GNU General Public License Usage
-## Alternatively, this file may be used under the terms of the GNU
-## General Public License version 2.0 or (at your option) the GNU General
-## Public license version 3 or any later version approved by the KDE Free
-## Qt Foundation. The licenses are as published by the Free Software
-## Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-## included in the packaging of this file. Please review the following
-## information to ensure the GNU General Public License requirements will
-## be met: https://www.gnu.org/licenses/gpl-2.0.html and
-## https://www.gnu.org/licenses/gpl-3.0.html.
-##
-## $QT_END_LICENSE$
-##
-#############################################################################
-
-from __future__ import print_function
+# Copyright (C) 2022 The Qt Company Ltd.
+# SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+from __future__ import annotations
 
 import os
 import re
 from collections import namedtuple
-from .helper import StringIO
+from io import StringIO
 
 """
 testing/parser.py
@@ -82,7 +45,9 @@ _TEST_PAT_PRE = r"""
     ([0-9]+)                   #                         sharp
     :                          # colon symbol            ':'
     """
-_TEST_PAT = _TEST_PAT_PRE + r"""
+_TEST_PAT = (
+    _TEST_PAT_PRE
+    + r"""
     \s+                        # some WS
     ([\w-]+)                   #                         mod_name
     .*?                        # whatever (non greedy)
@@ -98,14 +63,17 @@ _TEST_PAT = _TEST_PAT_PRE + r"""
     \s*                        # any WS
     $                          # end
     """
+)
 
 # validation of our pattern:
 assert re.match(_TEST_PAT, _EXAMPLE.splitlines()[5], re.VERBOSE)
 assert len(re.match(_TEST_PAT, _EXAMPLE.splitlines()[5], re.VERBOSE).groups()) == 8
 assert len(re.match(_TEST_PAT, _EXAMPLE.splitlines()[7], re.VERBOSE).groups()) == 8
 
-TestResult = namedtuple("TestResult", "idx n sharp mod_name passed "
-                                      "code time fatal rich_result".split())
+TestResult = namedtuple(
+    "TestResult", "idx n sharp mod_name passed " "code time fatal rich_result".split()
+)
+
 
 def _parse_tests(test_log):
     """
@@ -126,13 +94,13 @@ def _parse_tests(test_log):
         match = re.match(pat, line, re.VERBOSE)
         if match and line.split()[-1] != "sec":
             # don't change the number of lines
-            lines[idx : idx + 2] = [line.rstrip() + lines[idx + 1], ""]
+            lines[idx:idx + 2] = [line.rstrip() + lines[idx + 1], ""]
 
     pat = _TEST_PAT
     for line in lines:
         match = re.match(pat, line, re.VERBOSE)
         if match:
-            idx, n, sharp, mod_name, much_stuff, code1, code2, tim = tup = match.groups()
+            idx, n, sharp, mod_name, much_stuff, code1, code2, tim = match.groups()
             # either code1 or code2 is None
             code = code1 or code2
             idx, n, sharp, code, tim = int(idx), int(n), int(sharp), code.lower(), float(tim)
@@ -145,11 +113,10 @@ def _parse_tests(test_log):
         # Use "if idx + 1 != item.idx or idx == 42:"
         if idx + 1 != item.idx:
             # The numbering is disrupted. Provoke an error in this line!
-            passed = False
-            code += ", but lines are disrupted!"
-            result[idx] = item._replace(passed=False,
-                                        code=item.code + ", but lines are disrupted!",
-                                        fatal=True)
+            code = f"{code}, but lines are disrupted!"
+            result[idx] = item._replace(
+                passed=False, code=f"{item.code}, but lines are disrupted!", fatal=True
+            )
             break
     return result
 

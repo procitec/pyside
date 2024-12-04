@@ -1,32 +1,13 @@
-#############################################################################
-##
-## Copyright (C) 2020 The Qt Company Ltd.
-## Contact: https://www.qt.io/licensing/
-##
-## This file is part of the test suite of Qt for Python.
-##
-## $QT_BEGIN_LICENSE:GPL-EXCEPT$
-## Commercial License Usage
-## Licensees holding valid commercial Qt licenses may use this file in
-## accordance with the commercial license agreement provided with the
-## Software or, alternatively, in accordance with the terms contained in
-## a written agreement between you and The Qt Company. For licensing terms
-## and conditions see https://www.qt.io/terms-conditions. For further
-## information use the contact form at https://www.qt.io/contact-us.
-##
-## GNU General Public License Usage
-## Alternatively, this file may be used under the terms of the GNU
-## General Public License version 3 as published by the Free Software
-## Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-## included in the packaging of this file. Please review the following
-## information to ensure the GNU General Public License requirements will
-## be met: https://www.gnu.org/licenses/gpl-3.0.html.
-##
-## $QT_END_LICENSE$
-##
-#############################################################################
+# Copyright (C) 2022 The Qt Company Ltd.
+# SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+from __future__ import annotations
 
-"""
+import re
+import sys
+from argparse import ArgumentParser, FileType, RawTextHelpFormatter
+from collections import OrderedDict
+
+DESC = """
 debug_renamer.py
 ================
 
@@ -49,74 +30,85 @@ the addresses of objects do not compare well.
 
 Input format:
 -------------
-The Python output lines are of this format:
+The Python output lines can be freely formatted.
 
-mode filename:lineno funcname object_id typename object_refcount
-
-Mode can be "INC", "DEC", "XINC", XDEC", "NEW, "NEWV".
-
-On "NEW" or "NEWV", an object is created and the refcount is always 1.
-On "DEC" or "XDEC", when refcount is 0, the object is deleted.
-
-
-Operation
----------
-
-The script reads from <stdin> until EOF. It produces output where the
-object_id field is removed and some text is combined with object_typename
-to produce a unique object name.
-
-
-Example
--------
-
-You can create reference debugging output by using the modified interpreter at
-
-    https://github.com/ctismer/cpython/tree/3.9-refdebug
-
-and pipe the error output through this script.
-This is work in flux that might change quite often.
+Any line which contains "0x.." followed by some name will be changed,
+all others are left alone.
 
 
 To Do List
 ----------
 
-The script should be re-worked to be more flexible, without relying on
-the number of coulumns but with some intelligent guessing.
-
 Names of objects which are already deleted should be monitored and
-not by chance be re-used.
+not by chance be re-used. We need to think of a way to specify deletion.
 """
 
-import sys
-from collections import OrderedDict
 
-
-def make_name(type_name, name_pos):
+def make_name(typename, name_pos):
     """
     Build a name by using uppercase letters and numbers
     """
     if name_pos < 26:
         name = chr(ord("A") + name_pos)
-        return f"{type_name}_{name}"
-    return f"{type_name}_{str(name_pos)}"
+        return f"{typename}_{name}"
+    return f"{typename}_{str(name_pos)}"
 
 
-mode_tokens = "NEW NEWV INC DEC XINC XDEC".split()
 known_types = {}
+pattern = r"0x\w+\s+\S+"    # hex word followed by non-WS
+rex = re.compile(pattern, re.IGNORECASE)
 
-while 1:
-    line = sys.stdin.readline()
-    if not line:
-        break
-    fields = line.split()
-    if len(fields) != 6 or fields[0] not in mode_tokens:
-        print(line.rstrip())
-        continue
-    mode, fname_lno, funcname, object_id, typename, refcount = fields
+
+def rename_hexval(line):
+    if not (res := rex.search(line)):
+        return line
+    start_pos, end_pos = res.start(), res.end()
+    beg, mid, end = line[:start_pos], line[start_pos:end_pos], line[end_pos:]
+    object_id, typename = mid.split()
+    if int(object_id, 16) == 0:
+        return(f"{beg}{typename}_NULL{end}")
     if typename not in known_types:
         known_types[typename] = OrderedDict()
     obj_store = known_types[typename]
     if object_id not in obj_store:
         obj_store[object_id] = make_name(typename, len(obj_store))
-    print(f"{mode} {fname_lno} {funcname} {obj_store[object_id]} {refcount}")
+    return(f"{beg}{obj_store[object_id]}{end}")
+
+
+def hide_floatval(line):
+    return re.sub(r"\d+\.\d+", "<float>", line)
+
+
+def process_all_lines(options):
+    """
+    Process all lines from fin to fout.
+    The caller is responsible of opening and closing files if at all.
+    """
+    fi, fo = options.input, options.output
+    rename = options.rename
+    float_ = options.float
+    while line := fi.readline():
+        if rename:
+            line = rename_hexval(line)
+        if float_:
+            line = hide_floatval(line)
+        fo.write(line)
+
+
+def create_argument_parser(desc):
+    parser = ArgumentParser(description=desc, formatter_class=RawTextHelpFormatter)
+    parser.add_argument("--rename", "-r", action="store_true",
+                        help="Rename hex value and following word to a readable f'{word}_{anum}'")
+    parser.add_argument("--float", "-f", action="store_true",
+                        help="Replace timing numbers by '<float>' (for comparing ctest output)")
+    parser.add_argument("--input", "-i", nargs="?", type=FileType("r"), default=sys.stdin,
+                        help="Use the specified file instead of sys.stdin")
+    parser.add_argument("--output", "-o", nargs="?", type=FileType("w"), default=sys.stdout,
+                        help="Use the specified file instead of sys.stdout")
+    return parser
+
+
+if __name__ == "__main__":
+    argument_parser = create_argument_parser(DESC)
+    options = argument_parser.parse_args()
+    process_all_lines(options)

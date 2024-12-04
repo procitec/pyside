@@ -1,41 +1,6 @@
-#############################################################################
-##
-## Copyright (C) 2017 The Qt Company Ltd.
-## Contact: https://www.qt.io/licensing/
-##
-## This file is part of Qt for Python.
-##
-## $QT_BEGIN_LICENSE:LGPL$
-## Commercial License Usage
-## Licensees holding valid commercial Qt licenses may use this file in
-## accordance with the commercial license agreement provided with the
-## Software or, alternatively, in accordance with the terms contained in
-## a written agreement between you and The Qt Company. For licensing terms
-## and conditions see https://www.qt.io/terms-conditions. For further
-## information use the contact form at https://www.qt.io/contact-us.
-##
-## GNU Lesser General Public License Usage
-## Alternatively, this file may be used under the terms of the GNU Lesser
-## General Public License version 3 as published by the Free Software
-## Foundation and appearing in the file LICENSE.LGPL3 included in the
-## packaging of this file. Please review the following information to
-## ensure the GNU Lesser General Public License version 3 requirements
-## will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-##
-## GNU General Public License Usage
-## Alternatively, this file may be used under the terms of the GNU
-## General Public License version 2.0 or (at your option) the GNU General
-## Public license version 3 or any later version approved by the KDE Free
-## Qt Foundation. The licenses are as published by the Free Software
-## Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-## included in the packaging of this file. Please review the following
-## information to ensure the GNU General Public License requirements will
-## be met: https://www.gnu.org/licenses/gpl-2.0.html and
-## https://www.gnu.org/licenses/gpl-3.0.html.
-##
-## $QT_END_LICENSE$
-##
-#############################################################################
+# Copyright (C) 2022 The Qt Company Ltd.
+# SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+from __future__ import annotations
 
 #!/usr/bin/env python
 #
@@ -49,7 +14,12 @@
 #
 #
 
-import subprocess, sys, re, os.path, optparse, collections
+import collections
+import optparse
+import re
+import subprocess
+import sys
+from pathlib import Path
 from pprint import pprint
 
 
@@ -214,23 +184,23 @@ class MachOFile:
         if recorded_path.startswith(ImagePath.EXECUTABLE_PATH_TOKEN):
             executable_image_path = self.executable_path()
             if executable_image_path:
-                path.resolved_path = os.path.normpath(
+                path.resolved_path = Path(
                     recorded_path.replace(
                         ImagePath.EXECUTABLE_PATH_TOKEN,
-                        os.path.dirname(executable_image_path.resolved_path)))
+                        Path(executable_image_path.resolved_path).parent))
 
         # handle @loader_path
         elif recorded_path.startswith(ImagePath.LOADER_PATH_TOKEN):
-            path.resolved_path = os.path.normpath(recorded_path.replace(
+            path.resolved_path = Path(recorded_path.replace(
                 ImagePath.LOADER_PATH_TOKEN,
-                os.path.dirname(self.image_path.resolved_path)))
+                Path(self.image_path.resolved_path).parent))
 
         # handle @rpath
         elif recorded_path.startswith(ImagePath.RPATH_TOKEN):
             for rpath in self.all_rpaths():
-                resolved_path = os.path.normpath(recorded_path.replace(
+                resolved_path = Path(recorded_path.replace(
                     ImagePath.RPATH_TOKEN, rpath.resolved_path))
-                if os.path.exists(resolved_path):
+                if resolved_path.exists():
                     path.resolved_path = resolved_path
                     path.rpath_source = rpath.rpath_source
                     break
@@ -333,7 +303,7 @@ class ImagePath:
         return description
 
     def exists(self):
-        return self.resolved_path and os.path.exists(self.resolved_path)
+        return self.resolved_path and Path(self.resolved_path).exists()
 
     def resolved_equals_recorded(self):
         return (self.resolved_path and self.recorded_path and

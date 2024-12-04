@@ -1,128 +1,27 @@
-#############################################################################
-##
-## Copyright (C) 2019 The Qt Company Ltd.
-## Contact: https://www.qt.io/licensing/
-##
-## This file is part of Qt for Python.
-##
-## $QT_BEGIN_LICENSE:LGPL$
-## Commercial License Usage
-## Licensees holding valid commercial Qt licenses may use this file in
-## accordance with the commercial license agreement provided with the
-## Software or, alternatively, in accordance with the terms contained in
-## a written agreement between you and The Qt Company. For licensing terms
-## and conditions see https://www.qt.io/terms-conditions. For further
-## information use the contact form at https://www.qt.io/contact-us.
-##
-## GNU Lesser General Public License Usage
-## Alternatively, this file may be used under the terms of the GNU Lesser
-## General Public License version 3 as published by the Free Software
-## Foundation and appearing in the file LICENSE.LGPL3 included in the
-## packaging of this file. Please review the following information to
-## ensure the GNU Lesser General Public License version 3 requirements
-## will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-##
-## GNU General Public License Usage
-## Alternatively, this file may be used under the terms of the GNU
-## General Public License version 2.0 or (at your option) the GNU General
-## Public license version 3 or any later version approved by the KDE Free
-## Qt Foundation. The licenses are as published by the Free Software
-## Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-## included in the packaging of this file. Please review the following
-## information to ensure the GNU General Public License requirements will
-## be met: https://www.gnu.org/licenses/gpl-2.0.html and
-## https://www.gnu.org/licenses/gpl-3.0.html.
-##
-## $QT_END_LICENSE$
-##
-#############################################################################
-from build_scripts.options import has_option
-from build_scripts.options import option_value
-from build_scripts.utils import install_pip_dependencies, expand_clang_variables
-from build_scripts.utils import get_qtci_virtualEnv
-from build_scripts.utils import run_instruction
-from build_scripts.utils import rmtree
-from build_scripts.utils import get_ci_qmake_path
+# Copyright (C) 2022 The Qt Company Ltd.
+# SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+from __future__ import annotations
+
+import logging
 import os
-import site
-import sys
 
-# Values must match COIN thrift
-CI_HOST_OS = option_value("os")
-CI_TARGET_OS = option_value("targetOs")
-CI_HOST_ARCH = option_value("hostArch")
-CI_TARGET_ARCH = option_value("targetArch")
-CI_HOST_OS_VER = option_value("osVer")
-CI_ENV_INSTALL_DIR = option_value("instdir")
-CI_ENV_AGENT_DIR = option_value("agentdir") or "."
-CI_COMPILER = option_value("compiler")
-CI_FEATURES = []
-_ci_features = option_value("features")
-if _ci_features is not None:
-    for f in _ci_features.split(', '):
-        CI_FEATURES.append(f)
-CI_RELEASE_CONF = has_option("packaging")
-
-def call_testrunner(python_ver, buildnro):
-    _pExe, _env, env_pip, env_python = get_qtci_virtualEnv(python_ver, CI_HOST_OS, CI_HOST_ARCH, CI_TARGET_ARCH)
-    rmtree(_env, True)
-    # Pinning the virtualenv before creating one
-    run_instruction(["pip", "install", "--user", "virtualenv==20.7.2"], "Failed to pin virtualenv")
-    # installing to user base might not be in PATH by default.
-    env_path = os.path.join(site.USER_BASE, "bin")
-    v_env = os.path.join(env_path, "virtualenv")
-    if sys.platform == "win32":
-        env_path = os.path.join(site.USER_BASE, "Scripts")
-        v_env = os.path.join(env_path, "virtualenv.exe")
-    try:
-        run_instruction([v_env, "--version"], "Using default virtualenv")
-    except Exception as e:
-        v_env = "virtualenv"
-
-    run_instruction([v_env, "-p", _pExe,  _env], "Failed to create virtualenv")
-    # When the 'python_ver' variable is empty, we are using Python 2
-    # Pip is always upgraded when CI template is provisioned, upgrading it in later phase may cause perm issue
-    run_instruction([env_pip, "install", "-r", "requirements.txt"], "Failed to install dependencies")
-    if sys.platform == "win32":
-        run_instruction([env_pip, "install", "numpy==1.19.3"], "Failed to install numpy 1.19.3")
-    else:
-        run_instruction([env_pip, "install", "numpy"], "Failed to install numpy")
-
-    cmd = [env_python, "testrunner.py", "test",
-                  "--blacklist", "build_history/blacklist.txt",
-                  "--buildno=" + buildnro]
-    run_instruction(cmd, "Failed to run testrunner.py")
-
-    qmake_path = get_ci_qmake_path(CI_ENV_INSTALL_DIR, CI_HOST_OS)
-
-    # Try to install built wheels, and build some buildable examples.
-    if CI_RELEASE_CONF:
-        wheel_tester_path = os.path.join("testing", "wheel_tester.py")
-        cmd = [env_python, wheel_tester_path, qmake_path]
-        run_instruction(cmd, "Error while running wheel_tester.py")
-
-def run_test_instructions():
-    # Remove some environment variables that impact cmake
-    arch = '32' if CI_TARGET_ARCH and CI_TARGET_ARCH == 'X86' else '64'
-    expand_clang_variables(arch)
-    for env_var in ['CC', 'CXX']:
-        if os.environ.get(env_var):
-            del os.environ[env_var]
-
-    os.chdir(CI_ENV_AGENT_DIR)
-    testRun = 0
-    # We didn't build for Python 2 in win
-    if CI_HOST_OS != "Windows":
-        call_testrunner("", str(testRun))
-        testRun =+ 1
-    # We know that second build was with python3
-    if CI_RELEASE_CONF:
-        # In win machines, there are additional python versions to test with
-        if CI_HOST_OS == "Windows":
-            call_testrunner("3.6.1", str(testRun))
-            call_testrunner("3.8.1", str(testRun))
-        else:
-            call_testrunner("3", str(testRun))
+from build_scripts.log import log
+from build_scripts.utils import expand_clang_variables
+from coin.instructions_utils import (CI, call_setup, get_architecture,
+                                     get_python_version, remove_variables)
 
 if __name__ == "__main__":
-    run_test_instructions()
+    ci = CI()
+    log.setLevel(logging.INFO)
+    # Remove some environment variables that impact cmake
+    arch = get_architecture(ci)
+    expand_clang_variables(arch)
+
+    remove_variables(["CC", "CXX"])
+
+    python_ver = get_python_version(ci)
+
+    os.chdir(ci.ENV_AGENT_DIR)
+    testRun = 0
+
+    call_setup(python_ver, ci, "TEST", log)

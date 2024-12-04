@@ -1,55 +1,14 @@
-#############################################################################
-##
-## Copyright (C) 2018 The Qt Company Ltd.
-## Contact: https://www.qt.io/licensing/
-##
-## This file is part of the Qt for Python project.
-##
-## $QT_BEGIN_LICENSE:LGPL$
-## Commercial License Usage
-## Licensees holding valid commercial Qt licenses may use this file in
-## accordance with the commercial license agreement provided with the
-## Software or, alternatively, in accordance with the terms contained in
-## a written agreement between you and The Qt Company. For licensing terms
-## and conditions see https://www.qt.io/terms-conditions. For further
-## information use the contact form at https://www.qt.io/contact-us.
-##
-## GNU Lesser General Public License Usage
-## Alternatively, this file may be used under the terms of the GNU Lesser
-## General Public License version 3 as published by the Free Software
-## Foundation and appearing in the file LICENSE.LGPL3 included in the
-## packaging of this file. Please review the following information to
-## ensure the GNU Lesser General Public License version 3 requirements
-## will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-##
-## GNU General Public License Usage
-## Alternatively, this file may be used under the terms of the GNU
-## General Public License version 2.0 or (at your option) the GNU General
-## Public license version 3 or any later version approved by the KDE Free
-## Qt Foundation. The licenses are as published by the Free Software
-## Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-## included in the packaging of this file. Please review the following
-## information to ensure the GNU General Public License requirements will
-## be met: https://www.gnu.org/licenses/gpl-2.0.html and
-## https://www.gnu.org/licenses/gpl-3.0.html.
-##
-## $QT_END_LICENSE$
-##
-#############################################################################
+# Copyright (C) 2022 The Qt Company Ltd.
+# SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+from __future__ import annotations
 
-from __future__ import print_function
-
+import inspect
 import os
-import sys
 import re
 import subprocess
-import inspect
-
-from collections import namedtuple
+import sys
+from subprocess import TimeoutExpired
 from textwrap import dedent
-
-from .buildlog import builds
-from .helper import decorate, PY3, TimeoutExpired
 
 # Get the dir path to the utils module
 try:
@@ -58,10 +17,11 @@ except NameError:
     this_file = sys.argv[0]
 this_file = os.path.abspath(this_file)
 this_dir = os.path.dirname(this_file)
-build_scripts_dir = os.path.abspath(os.path.join(this_dir, '../build_scripts'))
+build_scripts_dir = os.path.abspath(os.path.join(this_dir, ".."))
 
 sys.path.append(build_scripts_dir)
-from utils import detect_clang
+from build_scripts.utils import detect_clang
+
 
 class TestRunner(object):
     def __init__(self, log_entry, project, index):
@@ -70,23 +30,48 @@ class TestRunner(object):
         self.test_dir = os.path.join(built_path, project)
         log_dir = log_entry.log_dir
         if index is not None:
-            self.logfile = os.path.join(log_dir, project + ".{}.log".format(index))
+            self.logfile = os.path.join(log_dir, f"{project}.{index}.log")
         else:
-            self.logfile = os.path.join(log_dir, project + ".log")
-        os.environ['CTEST_OUTPUT_ON_FAILURE'] = '1'
+            self.logfile = os.path.join(log_dir, f"{project}.log")
+        os.environ["CTEST_OUTPUT_ON_FAILURE"] = "1"
         self._setup_clang()
         self._setup()
+
+    def get_python_version(self):
+        """
+        Finding the exact Python version.
+        ---------------------------------
+
+        This is done by asking the interpreter, because it cannot reliably
+        be found from any file name parsing as a triple.
+
+        Note: We need to look into the CMakeCache.txt file to find out
+        what CMake has found as the Python interpreter to use.
+        This is *not* necessarily the same Python that runs this script,
+        otherwise we could use the version info directly.
+        """
+        look_python = os.path.join(self.test_dir, "CMakeCache.txt")
+        look_for = "PYTHON_EXECUTABLE:FILEPATH="
+        with open(look_python) as f:
+            for line in f:
+                if line.startswith(look_for):
+                    python_exec = line.split("=")[-1].strip()
+                    res = subprocess.run([python_exec, "-c",
+                                         "import sys;print(sys.version_info[:3])"],
+                                         capture_output=True)
+                    return eval(res.stdout.decode("utf-8"))
+        return None
 
     def _setup_clang(self):
         if sys.platform != "win32":
             return
         clang_dir = detect_clang()
         if clang_dir[0]:
-            clang_bin_dir = os.path.join(clang_dir[0], 'bin')
-            path = os.environ.get('PATH')
-            if not clang_bin_dir in path:
-                os.environ['PATH'] = clang_bin_dir + os.pathsep + path
-                print("Adding %s as detected by %s to PATH" % (clang_bin_dir, clang_dir[1]))
+            clang_bin_dir = os.path.join(clang_dir[0], "bin")
+            path = os.environ.get("PATH")
+            if clang_bin_dir not in path:
+                os.environ["PATH"] = clang_bin_dir + os.pathsep + path
+                print(f"Adding {clang_bin_dir} as detected by {clang_dir[1]} to PATH")
 
     def _find_ctest_in_file(self, file_name):
         """
@@ -103,14 +88,16 @@ class TestRunner(object):
                 # We have probably forgotten to build the tests.
                 # Give a nice error message with a shortened but exact path.
                 rel_path = os.path.relpath(file_name)
-                msg = dedent("""\n
-                    {line}
-                    **  ctest is not in '{}'.
+                msg = dedent(
+                    f"""\n
+                    {'*' * 79}
+                    **  ctest is not in '{rel_path}'.
                     *   Did you forget to build the tests with '--build-tests' in setup.py?
-                    """).format(rel_path, line=79 * "*")
+                    """
+                )
                 raise RuntimeError(msg)
         # the ctest program is on the left to look_for
-        assert line, "Did not find {}".format(look_for)
+        assert line, f"Did not find {look_for}"
         ctest = re.search(r'(\S+|"([^"]+)")\s+' + look_for, line).groups()
         return ctest[1] or ctest[0]
 
@@ -130,8 +117,9 @@ class TestRunner(object):
             path = os.path.join(self.test_dir, candidate)
             if os.path.exists(path):
                 return self._find_ctest_in_file(path)
-        raise RuntimeError('Cannot find any of the build system files {}.'.format(
-                           ', '.join(candidate_files)))
+        raise RuntimeError(
+            "Cannot find any of the build system files " f"{', '.join(candidate_files)}."
+        )
 
     def _setup(self):
         self.ctestCommand = self._find_ctest()
@@ -155,16 +143,20 @@ class TestRunner(object):
         # without a caret are interpreted as such which leads to weirdness.
         # Since we have all commands with explicit paths and don't use shell
         # commands, this should work fine.
-        print(dedent("""\
-            running {cmd}
-                 in {test_dir}
-            """).format(**self.__dict__))
-        ctest_process = subprocess.Popen(self.cmd,
-                                         cwd=self.test_dir,
-                                         stdout=subprocess.PIPE,
-                                         stderr=subprocess.STDOUT)
+        print(
+            dedent(
+                f"""\
+            running {self.cmd}
+                 in {self.test_dir}
+            """
+            )
+        )
+        ctest_process = subprocess.Popen(
+            self.cmd, cwd=self.test_dir, stdout=subprocess.PIPE, stderr=subprocess.STDOUT
+        )
+
         def py_tee(input, output, label):
-            '''
+            """
             A simple (incomplete) tee command in Python
 
             This script simply logs everything from input to output
@@ -179,7 +171,8 @@ class TestRunner(object):
 
             The special escape is for the case of an embedded file in
             the output.
-            '''
+            """
+
             def xprint(*args, **kw):
                 print(*args, file=output, **kw)
 
@@ -199,26 +192,20 @@ class TestRunner(object):
                 if line.startswith(text_z):
                     labelled = True
 
-        tee_src = dedent("""\
-            from __future__ import print_function
-            import sys
-            {}
-            py_tee(sys.stdin, sys.stdout, '{label}')
-            """).format(dedent(inspect.getsource(py_tee)), label=label)
+        tee_src = dedent(inspect.getsource(py_tee))
+        tee_src = f"import sys\n{tee_src}\npy_tee(sys.stdin, sys.stdout, '{label}')"
         tee_cmd = (sys.executable, "-E", "-u", "-c", tee_src)
-        tee_process = subprocess.Popen(tee_cmd,
-                                       cwd=self.test_dir,
-                                       stdin=ctest_process.stdout)
+        tee_process = subprocess.Popen(tee_cmd, cwd=self.test_dir, stdin=ctest_process.stdout)
         try:
             comm = tee_process.communicate
-            output = (comm(timeout=timeout) if PY3 else comm())[0]
+            _ = comm(timeout=timeout)[0]
         except (TimeoutExpired, KeyboardInterrupt):
             print()
             print("aborted, partial result")
             ctest_process.kill()
-            outs, errs = ctest_process.communicate()
+            _ = ctest_process.communicate()
             # ctest lists to a temp file. Move it to the log
-            tmp_name = self.logfile + ".tmp"
+            tmp_name = f"{self.logfile}.tmp"
             if os.path.exists(tmp_name):
                 if os.path.exists(self.logfile):
                     os.unlink(self.logfile)
@@ -240,4 +227,3 @@ class TestRunner(object):
             words = "^(" + "|".join(rerun) + ")$"
             cmd += ("--tests-regex", words)
         self._run(cmd, label, timeout)
-# eof

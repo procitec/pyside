@@ -1,59 +1,28 @@
+# Copyright (C) 2013 Riverbank Computing Limited.
+# Copyright (C) 2022 The Qt Company Ltd.
+# SPDX-License-Identifier: LicenseRef-Qt-Commercial OR BSD-3-Clause
+from __future__ import annotations
 
-#############################################################################
-##
-## Copyright (C) 2013 Riverbank Computing Limited.
-## Copyright (C) 2016 The Qt Company Ltd.
-## Contact: http://www.qt.io/licensing/
-##
-## This file is part of the Qt for Python examples of the Qt Toolkit.
-##
-## $QT_BEGIN_LICENSE:BSD$
-## You may use this file under the terms of the BSD license as follows:
-##
-## "Redistribution and use in source and binary forms, with or without
-## modification, are permitted provided that the following conditions are
-## met:
-##   * Redistributions of source code must retain the above copyright
-##     notice, this list of conditions and the following disclaimer.
-##   * Redistributions in binary form must reproduce the above copyright
-##     notice, this list of conditions and the following disclaimer in
-##     the documentation and/or other materials provided with the
-##     distribution.
-##   * Neither the name of The Qt Company Ltd nor the names of its
-##     contributors may be used to endorse or promote products derived
-##     from this software without specific prior written permission.
-##
-##
-## THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
-## "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
-## LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
-## A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
-## OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
-## SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
-## LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
-## DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
-## THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-## (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
-## OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE."
-##
-## $QT_END_LICENSE$
-##
-#############################################################################
+"""PySide6 port of the xml/dombookmarks example from Qt v5.x"""
 
-"""PySide2 port of the xml/dombookmarks example from Qt v5.x"""
+import sys
 
-from PySide2 import QtCore, QtGui, QtWidgets, QtXml
+from PySide6.QtCore import QDir, QFile, Qt, QTextStream
+from PySide6.QtGui import QAction, QIcon, QKeySequence
+from PySide6.QtWidgets import (QApplication, QFileDialog, QHeaderView,
+                               QMainWindow, QMessageBox, QStyle, QTreeWidget,
+                               QTreeWidgetItem)
+from PySide6.QtXml import QDomDocument
 
 
-class MainWindow(QtWidgets.QMainWindow):
+class MainWindow(QMainWindow):
     def __init__(self, parent=None):
-        super(MainWindow, self).__init__(parent)
+        super().__init__(parent)
 
-        self.xbelTree = XbelTree()
-        self.setCentralWidget(self.xbelTree)
+        self._xbel_tree = XbelTree()
+        self.setCentralWidget(self._xbel_tree)
 
-        self.createActions()
-        self.createMenus()
+        self.create_menus()
 
         self.statusBar().showMessage("Ready")
 
@@ -61,202 +30,193 @@ class MainWindow(QtWidgets.QMainWindow):
         self.resize(480, 320)
 
     def open(self):
-        fileName = QtWidgets.QFileDialog.getOpenFileName(self,
-                "Open Bookmark File", QtCore.QDir.currentPath(),
-                "XBEL Files (*.xbel *.xml)")[0]
+        file_name = QFileDialog.getOpenFileName(self,
+                                                "Open Bookmark File", QDir.currentPath(),
+                                                "XBEL Files (*.xbel *.xml)")[0]
 
-        if not fileName:
+        if not file_name:
             return
 
-        inFile = QtCore.QFile(fileName)
-        if not inFile.open(QtCore.QFile.ReadOnly | QtCore.QFile.Text):
-            QtWidgets.QMessageBox.warning(self, "DOM Bookmarks",
-                    "Cannot read file %s:\n%s." % (fileName, inFile.errorString()))
+        in_file = QFile(file_name)
+        if not in_file.open(QFile.ReadOnly | QFile.Text):
+            reason = in_file.errorString()
+            QMessageBox.warning(self, "DOM Bookmarks",
+                                f"Cannot read file {file_name}:\n{reason}.")
             return
 
-        if self.xbelTree.read(inFile):
+        if self._xbel_tree.read(in_file):
             self.statusBar().showMessage("File loaded", 2000)
 
-    def saveAs(self):
-        fileName = QtWidgets.QFileDialog.getSaveFileName(self,
-                "Save Bookmark File", QtCore.QDir.currentPath(),
-                "XBEL Files (*.xbel *.xml)")[0]
+    def save_as(self):
+        file_name = QFileDialog.getSaveFileName(self,
+                                                "Save Bookmark File", QDir.currentPath(),
+                                                "XBEL Files (*.xbel *.xml)")[0]
 
-        if not fileName:
+        if not file_name:
             return
 
-        outFile = QtCore.QFile(fileName)
-        if not outFile.open(QtCore.QFile.WriteOnly | QtCore.QFile.Text):
-            QtWidgets.QMessageBox.warning(self, "DOM Bookmarks",
-                    "Cannot write file %s:\n%s." % (fileName, outFile.errorString()))
+        out_file = QFile(file_name)
+        if not out_file.open(QFile.WriteOnly | QFile.Text):
+            reason = out_file.errorString()
+            QMessageBox.warning(self, "DOM Bookmarks",
+                                f"Cannot write file {file_name}:\n{reason}.")
             return
 
-        if self.xbelTree.write(outFile):
+        if self._xbel_tree.write(out_file):
             self.statusBar().showMessage("File saved", 2000)
 
     def about(self):
-       QtWidgets.QMessageBox.about(self, "About DOM Bookmarks",
-            "The <b>DOM Bookmarks</b> example demonstrates how to use Qt's "
-            "DOM classes to read and write XML documents.")
+        QMessageBox.about(self, "About DOM Bookmarks",
+                          "The <b>DOM Bookmarks</b> example demonstrates how to use Qt's "
+                          "DOM classes to read and write XML documents.")
 
-    def createActions(self):
-        self.openAct = QtWidgets.QAction("&Open...", self, shortcut="Ctrl+O",
-                triggered=self.open)
-
-        self.saveAsAct = QtWidgets.QAction("&Save As...", self, shortcut="Ctrl+S",
-                triggered=self.saveAs)
-
-        self.exitAct = QtWidgets.QAction("E&xit", self, shortcut="Ctrl+Q",
-                triggered=self.close)
-
-        self.aboutAct = QtWidgets.QAction("&About", self, triggered=self.about)
-
-        self.aboutQtAct = QtWidgets.QAction("About &Qt", self,
-                triggered=qApp.aboutQt)
-
-    def createMenus(self):
-        self.fileMenu = self.menuBar().addMenu("&File")
-        self.fileMenu.addAction(self.openAct)
-        self.fileMenu.addAction(self.saveAsAct)
-        self.fileMenu.addAction(self.exitAct)
+    def create_menus(self):
+        self._file_menu = self.menuBar().addMenu("&File")
+        self._file_menu.addAction(QAction("&Open...", self,
+                                          shortcut=QKeySequence(
+                                              Qt.CTRL | Qt.Key_O), triggered=self.open))
+        self._file_menu.addAction(QAction("&Save As...", self,
+                                          shortcut=QKeySequence(
+                                              Qt.CTRL | Qt.Key_S), triggered=self.save_as))
+        self._file_menu.addAction(QAction("E&xit", self,
+                                          shortcut=QKeySequence(
+                                              Qt.CTRL | Qt.Key_Q), triggered=self.close))
 
         self.menuBar().addSeparator()
 
-        self.helpMenu = self.menuBar().addMenu("&Help")
-        self.helpMenu.addAction(self.aboutAct)
-        self.helpMenu.addAction(self.aboutQtAct)
+        self._help_menu = self.menuBar().addMenu("&Help")
+        self._help_menu.addAction(QAction("&About", self, triggered=self.about))
+        self._help_menu.addAction(QAction("About &Qt", self, triggered=qApp.aboutQt))  # noqa: F821
 
 
-class XbelTree(QtWidgets.QTreeWidget):
+class XbelTree(QTreeWidget):
     def __init__(self, parent=None):
-        super(XbelTree, self).__init__(parent)
+        super().__init__(parent)
 
-        self.header().setSectionResizeMode(QtWidgets.QHeaderView.Stretch)
+        self.header().setSectionResizeMode(QHeaderView.Stretch)
         self.setHeaderLabels(("Title", "Location"))
 
-        self.domDocument = QtXml.QDomDocument()
+        self._dom_document = QDomDocument()
 
-        self.domElementForItem = {}
+        self._dom_element_for_item = {}
 
-        self.folderIcon = QtGui.QIcon()
-        self.bookmarkIcon = QtGui.QIcon()
+        self._folder_icon = QIcon()
+        self._bookmark_icon = QIcon()
 
-        self.folderIcon.addPixmap(self.style().standardPixmap(QtWidgets.QStyle.SP_DirClosedIcon),
-                QtGui.QIcon.Normal, QtGui.QIcon.Off)
-        self.folderIcon.addPixmap(self.style().standardPixmap(QtWidgets.QStyle.SP_DirOpenIcon),
-                QtGui.QIcon.Normal, QtGui.QIcon.On)
-        self.bookmarkIcon.addPixmap(self.style().standardPixmap(QtWidgets.QStyle.SP_FileIcon))
+        self._folder_icon.addPixmap(self.style().standardPixmap(QStyle.SP_DirClosedIcon),
+                                    QIcon.Normal, QIcon.Off)
+        self._folder_icon.addPixmap(self.style().standardPixmap(QStyle.SP_DirOpenIcon),
+                                    QIcon.Normal, QIcon.On)
+        self._bookmark_icon.addPixmap(self.style().standardPixmap(QStyle.SP_FileIcon))
 
     def read(self, device):
-        ok, errorStr, errorLine, errorColumn = self.domDocument.setContent(device, True)
+        ok, errorStr, errorLine, errorColumn = self._dom_document.setContent(device, True)
         if not ok:
-            QtWidgets.QMessageBox.information(self.window(), "DOM Bookmarks",
-                    "Parse error at line %d, column %d:\n%s" % (errorLine, errorColumn, errorStr))
+            QMessageBox.information(self.window(), "DOM Bookmarks",
+                                    f"Parse error at line {errorLine}, "
+                                    f"column {errorColumn}:\n{errorStr}")
             return False
 
-        root = self.domDocument.documentElement()
+        root = self._dom_document.documentElement()
         if root.tagName() != 'xbel':
-            QtWidgets.QMessageBox.information(self.window(), "DOM Bookmarks",
-                    "The file is not an XBEL file.")
+            QMessageBox.information(self.window(), "DOM Bookmarks",
+                                    "The file is not an XBEL file.")
             return False
         elif root.hasAttribute('version') and root.attribute('version') != '1.0':
-            QtWidgets.QMessageBox.information(self.window(), "DOM Bookmarks",
-                    "The file is not an XBEL version 1.0 file.")
+            QMessageBox.information(self.window(), "DOM Bookmarks",
+                                    "The file is not an XBEL version 1.0 file.")
             return False
 
         self.clear()
 
         # It might not be connected.
         try:
-            self.itemChanged.disconnect(self.updateDomElement)
-        except:
+            self.itemChanged.disconnect(self.update_dom_element)
+        except RuntimeError:
             pass
 
         child = root.firstChildElement('folder')
         while not child.isNull():
-            self.parseFolderElement(child)
+            self.parse_folder_element(child)
             child = child.nextSiblingElement('folder')
 
-        self.itemChanged.connect(self.updateDomElement)
+        self.itemChanged.connect(self.update_dom_element)
 
         return True
 
     def write(self, device):
-        indentSize = 4
+        INDENT_SIZE = 4
 
-        out = QtCore.QTextStream(device)
-        self.domDocument.save(out, indentSize)
+        out = QTextStream(device)
+        self._dom_document.save(out, INDENT_SIZE)
         return True
 
-    def updateDomElement(self, item, column):
-        element = self.domElementForItem.get(id(item))
+    def update_dom_element(self, item, column):
+        element = self._dom_element_for_item.get(id(item))
         if not element.isNull():
             if column == 0:
-                oldTitleElement = element.firstChildElement('title')
-                newTitleElement = self.domDocument.createElement('title')
+                old_title_element = element.firstChildElement('title')
+                new_title_element = self._dom_document.createElement('title')
 
-                newTitleText = self.domDocument.createTextNode(item.text(0))
-                newTitleElement.appendChild(newTitleText)
+                new_title_text = self._dom_document.createTextNode(item.text(0))
+                new_title_element.appendChild(new_title_text)
 
-                element.replaceChild(newTitleElement, oldTitleElement)
+                element.replaceChild(new_title_element, old_title_element)
             else:
                 if element.tagName() == 'bookmark':
                     element.setAttribute('href', item.text(1))
 
-    def parseFolderElement(self, element, parentItem=None):
-        item = self.createItem(element, parentItem)
+    def parse_folder_element(self, element, parentItem=None):
+        item = self.create_item(element, parentItem)
 
         title = element.firstChildElement('title').text()
         if not title:
             title = "Folder"
 
-        item.setFlags(item.flags() | QtCore.Qt.ItemIsEditable)
-        item.setIcon(0, self.folderIcon)
+        item.setFlags(item.flags() | Qt.ItemIsEditable)
+        item.setIcon(0, self._folder_icon)
         item.setText(0, title)
 
         folded = (element.attribute('folded') != 'no')
-        self.setItemExpanded(item, not folded)
+        item.setExpanded(not folded)
 
         child = element.firstChildElement()
         while not child.isNull():
             if child.tagName() == 'folder':
-                self.parseFolderElement(child, item)
+                self.parse_folder_element(child, item)
             elif child.tagName() == 'bookmark':
-                childItem = self.createItem(child, item)
+                child_item = self.create_item(child, item)
 
                 title = child.firstChildElement('title').text()
                 if not title:
                     title = "Folder"
 
-                childItem.setFlags(item.flags() | QtCore.Qt.ItemIsEditable)
-                childItem.setIcon(0, self.bookmarkIcon)
-                childItem.setText(0, title)
-                childItem.setText(1, child.attribute('href'))
+                child_item.setFlags(item.flags() | Qt.ItemIsEditable)
+                child_item.setIcon(0, self._bookmark_icon)
+                child_item.setText(0, title)
+                child_item.setText(1, child.attribute('href'))
             elif child.tagName() == 'separator':
-                childItem = self.createItem(child, item)
-                childItem.setFlags(item.flags() & ~(QtCore.Qt.ItemIsSelectable | QtCore.Qt.ItemIsEditable))
-                childItem.setText(0, 30 * "\xb7")
+                child_item = self.create_item(child, item)
+                child_item.setFlags(item.flags() & ~(Qt.ItemIsSelectable | Qt.ItemIsEditable))
+                child_item.setText(0, 30 * "\xb7")
 
             child = child.nextSiblingElement()
 
-    def createItem(self, element, parentItem=None):
-        item = QtWidgets.QTreeWidgetItem()
+    def create_item(self, element, parentItem=None):
+        item = QTreeWidgetItem()
 
         if parentItem is not None:
-            item = QtWidgets.QTreeWidgetItem(parentItem)
+            item = QTreeWidgetItem(parentItem)
         else:
-            item = QtWidgets.QTreeWidgetItem(self)
+            item = QTreeWidgetItem(self)
 
-        self.domElementForItem[id(item)] = element
+        self._dom_element_for_item[id(item)] = element
         return item
 
 
 if __name__ == '__main__':
-
-    import sys
-
-    app = QtWidgets.QApplication(sys.argv)
-    mainWin = MainWindow()
-    mainWin.show()
-    mainWin.open()
-    sys.exit(app.exec_())
+    app = QApplication(sys.argv)
+    main_win = MainWindow()
+    main_win.show()
+    main_win.open()
+    sys.exit(app.exec())

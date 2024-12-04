@@ -1,3 +1,0 @@
-include(@QT_SRC_DIR@/../qt3d/src/doc/qt3d.qdocconf)
-includepaths += -I @QT_SRC_DIR@/../qt3d/src/doc
-include(../pyside-config.qdocconf)

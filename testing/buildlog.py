@@ -1,43 +1,6 @@
-#############################################################################
-##
-## Copyright (C) 2017 The Qt Company Ltd.
-## Contact: https://www.qt.io/licensing/
-##
-## This file is part of Qt for Python
-##
-## $QT_BEGIN_LICENSE:LGPL$
-## Commercial License Usage
-## Licensees holding valid commercial Qt licenses may use this file in
-## accordance with the commercial license agreement provided with the
-## Software or, alternatively, in accordance with the terms contained in
-## a written agreement between you and The Qt Company. For licensing terms
-## and conditions see https://www.qt.io/terms-conditions. For further
-## information use the contact form at https://www.qt.io/contact-us.
-##
-## GNU Lesser General Public License Usage
-## Alternatively, this file may be used under the terms of the GNU Lesser
-## General Public License version 3 as published by the Free Software
-## Foundation and appearing in the file LICENSE.LGPL3 included in the
-## packaging of this file. Please review the following information to
-## ensure the GNU Lesser General Public License version 3 requirements
-## will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-##
-## GNU General Public License Usage
-## Alternatively, this file may be used under the terms of the GNU
-## General Public License version 2.0 or (at your option) the GNU General
-## Public license version 3 or any later version approved by the KDE Free
-## Qt Foundation. The licenses are as published by the Free Software
-## Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-## included in the packaging of this file. Please review the following
-## information to ensure the GNU General Public License requirements will
-## be met: https://www.gnu.org/licenses/gpl-2.0.html and
-## https://www.gnu.org/licenses/gpl-3.0.html.
-##
-## $QT_END_LICENSE$
-##
-#############################################################################
-
-from __future__ import print_function
+# Copyright (C) 2022 The Qt Company Ltd.
+# SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+from __future__ import annotations
 
 """
 testing/buildlog.py
@@ -48,8 +11,9 @@ BuildLog.classifiers finds the set of classifier strings.
 """
 
 import os
-import sys
+import platform
 import shutil
+import sys
 from collections import namedtuple
 from textwrap import dedent
 
@@ -67,14 +31,15 @@ class BuildLog(object):
     For simplicity and readability, the log entries are named tuples.
 
     """
+
     def __init__(self):
-        history_dir = os.path.join(script_dir, 'build_history')
+        history_dir = os.path.join(script_dir, "build_history")
         build_history = []
         for timestamp in os.listdir(history_dir):
             log_dir = os.path.join(history_dir, timestamp)
             if not os.path.isdir(log_dir):
                 continue
-            fpath = os.path.join(log_dir, 'build_dir.txt')
+            fpath = os.path.join(log_dir, "build_dir.txt")
             if not os.path.exists(fpath):
                 continue
             with open(fpath) as f:
@@ -88,10 +53,14 @@ class BuildLog(object):
                         build_dir = f_contents_split[0]
                         build_classifiers = ""
                 except IndexError:
-                    print(dedent("""
+                    print(
+                        dedent(
+                            f"""
                         Error: There was an issue finding the build dir and its
-                        characteristics, in the following considered file: '{}'
-                    """.format(fpath)))
+                        characteristics, in the following considered file: '{fpath}'
+                    """
+                        )
+                    )
                     sys.exit(1)
 
                 if not os.path.exists(build_dir):
@@ -102,13 +71,14 @@ class BuildLog(object):
                         if os.path.exists(build_dir):
                             print("Note: build_dir was probably moved.")
                         else:
-                            print("Warning: missing build dir %s" % build_dir)
+                            print(f"Warning: missing build dir {build_dir}")
                             continue
             entry = LogEntry(log_dir, build_dir, build_classifiers)
             build_history.append(entry)
         # we take the latest build for now.
         build_history.sort()
         self.history = build_history
+        self.python_version = None
         self._buildno = None
         if not is_ci:
             # there seems to be a timing problem in RHel 7.6, so we better don't touch it
@@ -122,11 +92,13 @@ class BuildLog(object):
                 continue
             lst.append(log_dir)
         if lst:
+
             def warn_problem(func, path, exc_info):
-                cls, ins, tb = exc_info
-                print("rmtree({}) warning: problem with {}:\n   {}: {}".format(
-                    func.__name__, path,
-                    cls.__name__, ins.args))
+                cls, ins, _ = exc_info
+                print(
+                    f"rmtree({func.__name__}) warning: problem with "
+                    f"{path}:\n   {cls.__name__}: {ins.args}"
+                )
 
             lst.sort()
             log_dir = lst[-1]
@@ -139,7 +111,7 @@ class BuildLog(object):
                     shutil.rmtree(log_dir, onerror=warn_problem)
 
     def set_buildno(self, buildno):
-        self.history[buildno] # test
+        self.history[buildno]  # test
         self._buildno = buildno
 
     @property
@@ -153,18 +125,23 @@ class BuildLog(object):
     @property
     def classifiers(self):
         if not self.selected:
-            raise ValueError('+++ No build with the configuration found!')
+            raise ValueError("+++ No build with the configuration found!")
         # Python2 legacy: Correct 'linux2' to 'linux', recommended way.
-        platform = 'linux' if sys.platform.startswith('linux') else sys.platform
-        res = [platform]
+        plat_name = "linux" if sys.platform.startswith("linux") else sys.platform
+        res = [plat_name, "qt6"]
+        if is_ci:
+            res.append("ci")
         if self.selected.build_classifiers:
             # Use classifier string encoded into build_dir.txt file.
-            res.extend(self.selected.build_classifiers.split('-'))
+            res.extend(self.selected.build_classifiers.split("-"))
         else:
             # the rest must be guessed from the given filename
             path = self.selected.build_dir
             base = os.path.basename(path)
-            res.extend(base.split('-'))
+            res.extend(base.split("-"))
+        # add exact Python version
+        if self.python_version:
+            res.append("py" + ".".join(map(str, self.python_version)))
         # add all the python and qt subkeys
         for entry in res:
             parts = entry.split(".")
@@ -172,6 +149,13 @@ class BuildLog(object):
                 key = ".".join(parts[:idx])
                 if key not in res:
                     res.append(key)
+        # Allow to check the processor.
+        # This gives "i386" or "arm" on macOS.
+        res.append(platform.processor())
         return res
+
+    def set_python_version(self, version_triple):
+        self.python_version = version_triple
+
 
 builds = BuildLog()

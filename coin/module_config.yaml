@@ -2,34 +2,84 @@ version: 2
 accept_configuration:
   condition: or
   conditions:
-      - condition: and
-        conditions:
-          - condition: property  # No cross compilation
-            property: host.os
-            equals_property: target.os
-          - condition: property  # qtnamespace is not supported
-            property: configureArgs
-            not_contains_value: -qtnamespace
-          - condition: property  # no-widgets is notsupported
-            property: configureArgs
-            not_contains_value: -no-widgets
-          - condition: property  # no-gui is not supported
-            property: configureArgs
-            not_contains_value: -no-gui
-          - condition: property   # Following configs are not supported
-            property: target.osVersion
-            not_in_values: [OPENSUSE_13_01, QEMU, WebAssembly, Ubuntu_18_04, SLES_12, SLES_15, MacOS_10_15]
-          - condition: property  # MibnGW and msvc2015 are not supported
-            property: target.compiler
-            not_in_values: [Mingw, MSVC2015]
-      - condition: and
-        conditions:
-          - condition: property
-            property: target.osVersion
-            equals_value: Ubuntu_18_04
-          - condition: property
-            property: features
-            contains_value: LicenseCheck
+    - condition: property
+      property: features
+      contains_value: LicenseCheck
+    - condition: and
+      conditions:
+        - condition: property  # No cross compilation
+          property: host.os
+          equals_property: target.os
+        - condition: property
+          property: features
+          contains_value: Packaging
+        - condition: property
+          property: features
+          not_contains_value: UseLegacyInstructions
+        - condition: property  # MinGW and msvc2015 are not supported
+          property: target.compiler
+          not_in_values: [Mingw, MSVC2015,Clang]
+        - condition: property  # Webassembly
+          property: target.osVersion
+          not_equals_value: WebAssembly
+        - condition: property  # Windows on Arm
+          property: target.arch
+          not_equals_value: ARM64
+        - condition: property  # Windows on Arm host build
+          property: target.arch
+          not_equals_value: AARCH64
+        - condition: property
+          property: features
+          not_contains_value: DebianPackaging
+        - condition: property
+          property: target.osVersion
+          not_equals_value: VxWorks
+    - condition: and
+      conditions:
+        - condition: property
+          property: host.os
+          equals_value: MacOS
+        - condition: property
+          property: features
+          contains_value: TestOnly
+        - condition: property
+          property: features
+          contains_value: Packaging
+        - condition: property
+          property: target.os
+          not_contains_value: Android
+        - condition: property
+          property: target.os
+          not_contains_value: IOS
+        - condition: property
+          property: host.osVersion
+          not_equals_value: MacOS_12
+    - condition: and # Restore LoA config
+      conditions:
+        - condition: property
+          property: host.os
+          equals_value: Linux
+        - condition: property
+          property: host.arch
+          equals_value: AARCH64
+        - condition: property
+          property: target.arch
+          equals_value: AARCH64
+        - condition: property
+          property: features
+          contains_value: Packaging
+    - condition: and
+      conditions:
+        - condition: property
+          property: target.os
+          equals_value: Android
+        - condition: property
+          property: features
+          contains_value: Packaging
+
+machine_type:
+  Build:
+    cores: 8
 
 upload_pyside: &upload_pyside
      type: Group
@@ -55,14 +105,14 @@ upload_pyside: &upload_pyside
 
 instructions:
      LicenseCheck:
-      - !include "{{pyside/tqtc-pyside-setup}}/execute_license_check.yaml"
+      - !include "{{qt/qtbase}}/run_license_check.yaml"
      Build:
-      - !include "{{pyside/tqtc-pyside-setup}}/common_environment.yaml"
-      - !include "{{pyside/tqtc-pyside-setup}}/find_path_to_msvc_compiler.yaml"
-      - !include "{{pyside/tqtc-pyside-setup}}/execute_build_instructions.yaml"
+      - !include "{{pyside/pyside-setup}}/common_environment.yaml"
+      - !include "{{pyside/pyside-setup}}/find_path_to_msvc_compiler.yaml"
+      - !include "{{pyside/pyside-setup}}/execute_build_instructions.yaml"
       - *upload_pyside
      Test:
-      - !include "{{pyside/tqtc-pyside-setup}}/common_environment.yaml"
-      - !include "{{pyside/tqtc-pyside-setup}}/find_path_to_msvc_compiler.yaml"
-      - !include "{{pyside/tqtc-pyside-setup}}/relocate_pyside.yaml"
-      - !include "{{pyside/tqtc-pyside-setup}}/execute_test_instructions.yaml"
+      - !include "{{pyside/pyside-setup}}/common_environment.yaml"
+      - !include "{{pyside/pyside-setup}}/find_path_to_msvc_compiler.yaml"
+      - !include "{{pyside/pyside-setup}}/relocate_pyside.yaml"
+      - !include "{{pyside/pyside-setup}}/execute_test_instructions.yaml"

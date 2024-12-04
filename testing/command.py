@@ -1,43 +1,6 @@
-#############################################################################
-##
-## Copyright (C) 2017 The Qt Company Ltd.
-## Contact: https://www.qt.io/licensing/
-##
-## This file is part of Qt for Python.
-##
-## $QT_BEGIN_LICENSE:LGPL$
-## Commercial License Usage
-## Licensees holding valid commercial Qt licenses may use this file in
-## accordance with the commercial license agreement provided with the
-## Software or, alternatively, in accordance with the terms contained in
-## a written agreement between you and The Qt Company. For licensing terms
-## and conditions see https://www.qt.io/terms-conditions. For further
-## information use the contact form at https://www.qt.io/contact-us.
-##
-## GNU Lesser General Public License Usage
-## Alternatively, this file may be used under the terms of the GNU Lesser
-## General Public License version 3 as published by the Free Software
-## Foundation and appearing in the file LICENSE.LGPL3 included in the
-## packaging of this file. Please review the following information to
-## ensure the GNU Lesser General Public License version 3 requirements
-## will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-##
-## GNU General Public License Usage
-## Alternatively, this file may be used under the terms of the GNU
-## General Public License version 2.0 or (at your option) the GNU General
-## Public license version 3 or any later version approved by the KDE Free
-## Qt Foundation. The licenses are as published by the Free Software
-## Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-## included in the packaging of this file. Please review the following
-## information to ensure the GNU General Public License requirements will
-## be met: https://www.gnu.org/licenses/gpl-2.0.html and
-## https://www.gnu.org/licenses/gpl-3.0.html.
-##
-## $QT_END_LICENSE$
-##
-#############################################################################
-
-from __future__ import print_function
+# Copyright (C) 2022 The Qt Company Ltd.
+# SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+from __future__ import annotations
 
 """
 testrunner
@@ -57,7 +20,7 @@ Building the project with something like
     python setup.py build --build-tests --qmake=<qmakepath> --ignore-git --debug
 
 is sufficient. The tests are run by changing into the latest build dir and there
-into pyside2, then 'make test'.
+into pyside6, then 'make test'.
 
 
 New testing policy:
@@ -72,30 +35,39 @@ The full mode can be tested locally by setting
     export COIN_RERUN_FAILED_ONLY=0
 """
 
+import argparse
 import os
 import sys
-import argparse
-from textwrap import dedent
 from collections import OrderedDict
+from textwrap import dedent
 from timeit import default_timer as timer
 
-from .helper import script_dir, decorate
-from .buildlog import builds
 from .blacklist import BlackList
-from .runner import TestRunner
+from .buildlog import builds
+from .helper import decorate, script_dir
 from .parser import TestParser
+from .runner import TestRunner
 
 # Should we repeat only failed tests?
 COIN_RERUN_FAILED_ONLY = True
-COIN_THRESHOLD = 3    # report error if >=
-COIN_TESTING = 5      # number of runs
+COIN_THRESHOLD = 3  # report error if >=
+COIN_TESTING = 5  # number of runs
+TIMEOUT = 20 * 60
 
-if (os.environ.get("COIN_RERUN_FAILED_ONLY", "1").lower() in
-    "0 f false n no".split()):
+if os.environ.get("COIN_RERUN_FAILED_ONLY", "1").lower() in "0 f false n no".split():
     COIN_RERUN_FAILED_ONLY = False
+
 
 def test_project(project, args, blacklist, runs):
     ret = []
+
+    if "pypy" in builds.classifiers:
+        # As long as PyPy has so many bugs, we use 1 test only...
+        global COIN_TESTING
+        COIN_TESTING = runs = 1
+        # ...and extend the timeout.
+        global TIMEOUT
+        TIMEOUT = 100 * 60
 
     # remove files from a former run
     for idx in range(runs):
@@ -104,11 +76,14 @@ def test_project(project, args, blacklist, runs):
         if os.path.exists(runner.logfile) and not args.skip:
             os.unlink(runner.logfile)
     # now start the real run
+    rerun_list = None
     for idx in range(runs):
         index = idx + 1
         runner = TestRunner(builds.selected, project, index)
+        # For the full Python version we need to ask the TestRunner.
+        builds.set_python_version(runner.get_python_version())
         print()
-        print("********* Start testing of %s *********" % project)
+        print(f"********* Start testing of {project} *********")
         print("Config: Using", " ".join(builds.classifiers))
         print()
         if os.path.exists(runner.logfile) and args.skip:
@@ -117,12 +92,11 @@ def test_project(project, args, blacklist, runs):
             if index > 1 and COIN_RERUN_FAILED_ONLY:
                 rerun = rerun_list
                 if not rerun:
-                    print("--- no re-runs found, stopping before test {} ---"
-                          .format(index))
+                    print(f"--- no re-runs found, stopping before test {index} ---")
                     break
             else:
                 rerun = None
-            runner.run("RUN {}:".format(idx + 1), rerun, 10 * 60)
+            runner.run(f"RUN {idx + 1}:", rerun, TIMEOUT)
         results = TestParser(runner.logfile)
         r = 5 * [0]
         rerun_list = []
@@ -130,12 +104,12 @@ def test_project(project, args, blacklist, runs):
         fatal = False
         for item in results.iter_blacklist(blacklist):
             res = item.rich_result
-            sharp = "#" + str(item.sharp)
+            sharp = f"#{item.sharp}"
             mod_name = decorate(item.mod_name)
-            print("RES {index}: Test {sharp:>4}: {res:<6} {mod_name}()".format(**locals()))
+            print(f"RES {index}: Test {sharp:>4}: {res:<6} {mod_name}()")
             r[0] += 1 if res == "PASS" else 0
             r[1] += 1 if res == "FAIL!" else 0
-            r[2] += 1 if res == "SKIPPED" else 0 # not yet supported
+            r[2] += 1 if res == "SKIPPED" else 0  # not yet supported
             r[3] += 1 if res == "BFAIL" else 0
             r[4] += 1 if res == "BPASS" else 0
             if res not in ("PASS", "BPASS"):
@@ -144,67 +118,90 @@ def test_project(project, args, blacklist, runs):
             if item.fatal:
                 fatal = item
         print()
-        print("Totals:", sum(r), "tests.",
-              "{} passed, {} failed, {} skipped, {} blacklisted, {} bpassed."
-              .format(*r))
+        print(
+            f"Totals: {sum(r)} tests. "
+            f"{r[0]} passed, {r[1]} failed, {r[2]} skipped, {r[3]} blacklisted, {r[4]} bpassed."
+        )
         print()
-        print("********* Finished testing of %s *********" % project)
+        print(f"********* Finished testing of {project} *********")
         print()
         ret.append(r)
         if fatal:
             print("FATAL ERROR:", fatal)
             print("Repetitions cancelled!")
             break
-    return ret, fatal
+    return ret, fatal, runs
+
 
 def main():
     # create the top-level command parser
     start_time = timer()
-    all_projects = "shiboken2 pyside2 pyside2-tools".split()
-    tested_projects = "shiboken2 pyside2".split()
+    all_projects = "shiboken6 pyside6".split()
+    tested_projects = "shiboken6 pyside6".split()
+    tested_projects_quoted = " ".join("'i'" for i in tested_projects)
     parser = argparse.ArgumentParser(
         formatter_class=argparse.RawDescriptionHelpFormatter,
-        description=dedent("""\
-        Run the tests for some projects, default = '{}'.
+        description=dedent(
+            """\
+        Run the tests for some projects, default = {tested_projects_quoted}.
 
-        Testing is now repeated up to {rep} times, and errors are
-        only reported if they occur {thr} or more times.
+        Testing is now repeated up to {COIN_TESTING} times, and errors are
+        only reported if they occur {COIN_THRESHOLD} or more times.
         The environment variable COIN_RERUN_FAILED_ONLY controls if errors
         are only repeated if there are errors. The default is "1".
-        """.format("' '".join(tested_projects), thr=COIN_THRESHOLD, rep=COIN_TESTING)))
+        """
+        ),
+    )
     subparsers = parser.add_subparsers(dest="subparser_name")
 
     # create the parser for the "test" command
     parser_test = subparsers.add_parser("test")
     group = parser_test.add_mutually_exclusive_group(required=False)
-    blacklist_default = os.path.join(script_dir, 'build_history', 'blacklist.txt')
-    group.add_argument("--blacklist", "-b", type=argparse.FileType('r'),
-                       default=blacklist_default,
-                       help='a Qt blacklist file (default: {})'.format(blacklist_default))
-    parser_test.add_argument("--skip", action='store_true',
-                        help="skip the tests if they were run before")
-    parser_test.add_argument("--environ", nargs='+',
-                        help="use name=value ... to set environment variables")
-    parser_test.add_argument("--buildno", default=-1, type=int,
-                        help="use build number n (0-based), latest = -1 (default)")
-    parser_test.add_argument("--projects", nargs='+', type=str,
-                        default=tested_projects,
-                        choices=all_projects,
-                        help="use '{}'' (default) or other projects"
-                        .format("' '".join(tested_projects)))
+    blacklist_default = os.path.join(script_dir, "build_history", "blacklist.txt")
+    group.add_argument(
+        "--blacklist",
+        "-b",
+        type=argparse.FileType("r"),
+        default=blacklist_default,
+        help=f"a Qt blacklist file (default: {blacklist_default})",
+    )
+    parser_test.add_argument(
+        "--skip", action="store_true", help="skip the tests if they were run before"
+    )
+    parser_test.add_argument(
+        "--environ", nargs="+", help="use name=value ... to set environment variables"
+    )
+    parser_test.add_argument(
+        "--buildno",
+        default=-1,
+        type=int,
+        help="use build number n (0-based), latest = -1 (default)",
+    )
+    parser_test.add_argument(
+        "--projects",
+        nargs="+",
+        type=str,
+        default=tested_projects,
+        choices=all_projects,
+        help=f"use {tested_projects_quoted} (default) or other projects",
+    )
     parser_getcwd = subparsers.add_parser("getcwd")
-    parser_getcwd.add_argument("filename", type=argparse.FileType('w'),
-                        help="write the build dir name into a file")
-    parser_getcwd.add_argument("--buildno", default=-1, type=int,
-                        help="use build number n (0-based), latest = -1 (default)")
-    parser_list = subparsers.add_parser("list")
+    parser_getcwd.add_argument(
+        "filename", type=argparse.FileType("w"), help="write the build dir name into a file"
+    )
+    parser_getcwd.add_argument(
+        "--buildno",
+        default=-1,
+        type=int,
+        help="use build number n (0-based), latest = -1 (default)",
+    )
     args = parser.parse_args()
 
     if hasattr(args, "buildno"):
         try:
             builds.set_buildno(args.buildno)
         except IndexError:
-            print("history out of range. Try '%s list'" % __file__)
+            print(f"history out of range. Try '{__file__} list'")
             sys.exit(1)
 
     if args.subparser_name == "getcwd":
@@ -212,7 +209,7 @@ def main():
         print(builds.selected.build_dir, "written to file", args.filename.name)
         sys.exit(0)
     elif args.subparser_name == "test":
-        pass # we do it afterwards
+        pass  # we do it afterwards
     elif args.subparser_name == "list":
         rp = os.path.relpath
         print()
@@ -240,17 +237,21 @@ def main():
             key, value = things
             os.environ[key] = value
 
-    print(dedent("""\
+    version = sys.version.replace("\n", " ")
+    print(
+        dedent(
+            f"""\
         System:
-          Platform={platform}
-          Executable={executable}
-          Version={version_lf}
-          API version={api_version}
+          Platform={sys.platform}
+          Executable={sys.executable}
+          Version={version}
+          API version={sys.api_version}
 
-        Environment:""")
-        .format(version_lf=sys.version.replace("\n", " "), **sys.__dict__))
+        Environment:"""
+        )
+    )
     for key, value in sorted(os.environ.items()):
-        print("  {}={}".format(key, value))
+        print(f"  {key}={value}")
     print()
 
     q = 5 * [0]
@@ -260,16 +261,17 @@ def main():
     # now loop over the projects and accumulate
     fatal = False
     for project in args.projects:
-        res, fatal = test_project(project, args, bl, runs)
+        res, fatal, runs = test_project(project, args, bl, runs)
         if fatal:
             runs = 1
         for idx, r in enumerate(res):
-            q = list(map(lambda x, y: x+y, r, q))
+            q = list(map(lambda x, y: x + y, r, q))
 
     if len(args.projects) > 1:
-        print("All above projects:", sum(q), "tests.",
-              "{} passed, {} failed, {} skipped, {} blacklisted, {} bpassed."
-              .format(*q))
+        print(
+            f"All above projects: {sum(q)} tests. "
+            f"{q[0]} passed, {q[1]} failed, {q[2]} skipped, {q[3]} blacklisted, {q[4]} bpassed."
+        )
         print()
 
     tot_res = OrderedDict()
@@ -279,7 +281,7 @@ def main():
             runner = TestRunner(builds.selected, project, index)
             results = TestParser(runner.logfile)
             for item in results.iter_blacklist(bl):
-                key = project + ":" + item.mod_name
+                key = f"{project}:{item.mod_name}"
                 tot_res.setdefault(key, [])
                 tot_res[key].append(item.rich_result)
     tot_flaky = 0
@@ -312,8 +314,8 @@ def main():
             continue
         empty = False
         padding = 6 * runs
-        txt = " ".join(("{:<{width}}".format(piece, width=5) for piece in res))
-        txt = (txt + padding * " ")[:padding]
+        txt = " ".join((f"{piece:<5}" for piece in res))
+        txt = (f"{txt}{padding * ' '}")[:padding]
         testpad = 36
         if len(test) < testpad:
             test += (testpad - len(test)) * " "
@@ -325,7 +327,7 @@ def main():
     print("*" * 79)
     print()
     if runs > 1:
-        print("Total flaky tests: errors but not always = {}".format(tot_flaky))
+        print(f"Total flaky tests: errors but not always = {tot_flaky}")
         print()
     else:
         print("For info about flaky tests, we need to perform more than one run.")
@@ -334,7 +336,7 @@ def main():
     # nag us about unsupported projects
     ap, tp = set(all_projects), set(tested_projects)
     if ap != tp:
-        print("+++++ Note: please support", " ".join(ap-tp), "+++++")
+        print("+++++ Note: please support", " ".join(ap - tp), "+++++")
         print()
 
     stop_time = timer()
@@ -342,16 +344,23 @@ def main():
     # Now create an error if the criterion is met:
     try:
         if fatal:
-            raise ValueError("FATAL format error:", fatal)
-        err_crit = "'FAIL! >= {}'".format(fail_crit)
+            raise ValueError(f"FATAL format error: {fatal}")
+        err_crit = f"'FAIL! >= {fail_crit}'"
+        fail_count = 0
         for res in tot_res.values():
             if res.count("FAIL!") >= fail_crit:
-                raise ValueError("At least one failure was not blacklisted "
-                                 "and met the criterion {}"
-                                 .format(err_crit))
-        print("No test met the error criterion {}".format(err_crit))
+                fail_count += 1
+        if fail_count == 1:
+            raise ValueError(f"A test was not blacklisted and met the criterion {err_crit}")
+        elif fail_count > 1:
+            raise ValueError(
+                f"{fail_count} failures were not blacklisted " f"and met the criterion {err_crit}"
+            )
+        print(f"No test met the error criterion {err_crit}")
     finally:
         print()
-        print("Total time of whole Python script = {:0.2f} sec".format(used_time))
+        print(f"Total time of whole Python script = {used_time:0.2f} sec")
         print()
+
+
 # eof

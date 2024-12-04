@@ -1,35 +1,33 @@
 product_dependency:
-  ../../qt/tqtc-qt5.git:
-    ref: "715f5bca3972b1841701f4ef10b7a582a1be2723"
+  ../../qt/qt5:
+    ref: "41d5d04f71871d94a76a1910ef153139a9746c32"
 dependency_source: supermodule
 dependencies: [
       "../../qt/qt3d",
+      "../../qt/qt5compat",
       "../../qt/qtactiveqt",
-      "../../qt/qtandroidextras",
       "../../qt/qtbase",
       "../../qt/qtcharts",
       "../../qt/qtconnectivity",
       "../../qt/qtdatavis3d",
       "../../qt/qtdeclarative",
       "../../qt/qtdoc",
-      "../../qt/qtgamepad",
-      "../../qt/qtgraphicaleffects",
+      "../../qt/qtgraphs",
+      "../../qt/qthttpserver",
       "../../qt/qtimageformats",
       "../../qt/qtlocation",
-      "../../qt/qtlottie",
-      "../../qt/qtmacextras",
+      "../../qt/qtpositioning",
       "../../qt/qtmultimedia",
       "../../qt/qtnetworkauth",
-      "../../qt/qtpurchasing",
       "../../qt/qtqa",
       "../../qt/qtquick3d",
-      "../../qt/qtquickcontrols2",
       "../../qt/qtquicktimeline",
       "../../qt/qtremoteobjects",
       "../../qt/qtscxml",
       "../../qt/qtsensors",
       "../../qt/qtserialbus",
       "../../qt/qtserialport",
+      "../../qt/qtshadertools",
       "../../qt/qtspeech",
       "../../qt/qtsvg",
       "../../qt/qttools",
@@ -38,9 +36,6 @@ dependencies: [
       "../../qt/qtwayland",
       "../../qt/qtwebchannel",
       "../../qt/qtwebengine",
-      "../../qt/qtwebglplugin",
       "../../qt/qtwebsockets",
       "../../qt/qtwebview",
-      "../../qt/qtwinextras",
-      "../../qt/qtx11extras"
       ]

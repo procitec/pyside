@@ -1,44 +1,13 @@
-#############################################################################
-##
-## Copyright (C) 2018 The Qt Company Ltd.
-## Contact: https://www.qt.io/licensing/
-##
-## This file is part of Qt for Python.
-##
-## $QT_BEGIN_LICENSE:LGPL$
-## Commercial License Usage
-## Licensees holding valid commercial Qt licenses may use this file in
-## accordance with the commercial license agreement provided with the
-## Software or, alternatively, in accordance with the terms contained in
-## a written agreement between you and The Qt Company. For licensing terms
-## and conditions see https://www.qt.io/terms-conditions. For further
-## information use the contact form at https://www.qt.io/contact-us.
-##
-## GNU Lesser General Public License Usage
-## Alternatively, this file may be used under the terms of the GNU Lesser
-## General Public License version 3 as published by the Free Software
-## Foundation and appearing in the file LICENSE.LGPL3 included in the
-## packaging of this file. Please review the following information to
-## ensure the GNU Lesser General Public License version 3 requirements
-## will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-##
-## GNU General Public License Usage
-## Alternatively, this file may be used under the terms of the GNU
-## General Public License version 2.0 or (at your option) the GNU General
-## Public license version 3 or any later version approved by the KDE Free
-## Qt Foundation. The licenses are as published by the Free Software
-## Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-## included in the packaging of this file. Please review the following
-## information to ensure the GNU General Public License requirements will
-## be met: https://www.gnu.org/licenses/gpl-2.0.html and
-## https://www.gnu.org/licenses/gpl-3.0.html.
-##
-## $QT_END_LICENSE$
-##
-#############################################################################
+# Copyright (C) 2018 The Qt Company Ltd.
+# SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+from __future__ import annotations
 
-import os
-import distutils.log as log
+import sys
+from .log import log, LogLevel
+from pathlib import Path
+
+from . import PYSIDE, PYSIDE_MODULE, SHIBOKEN
+from .utils import available_pyside_tools
 
 
 class Config(object):
@@ -57,11 +26,11 @@ class Config(object):
         self.invocation_type = None
 
         # The type of the top-level build.
-        # all - build shiboken2 module, shiboken2-generator and PySide2
+        # all - build shiboken6 module, shiboken6-generator and PySide6
         #       modules
-        # shiboken2 - build only shiboken2 module
-        # shiboken2-generator - build only the shiboken2-generator
-        # pyside2 - build only PySide2 modules
+        # shiboken6 - build only shiboken6 module
+        # shiboken6-generator - build only the shiboken6-generator
+        # pyside6 - build only PySide6 modules
         self.build_type = None
 
         # The internal build type, used for internal invocations of
@@ -70,39 +39,48 @@ class Config(object):
 
         # Options that can be given to --build-type and
         # --internal-build-type
-        self.shiboken_module_option_name = "shiboken2"
-        self.shiboken_generator_option_name = "shiboken2-generator"
-        self.pyside_option_name = "pyside2"
+        self.shiboken_module_option_name = SHIBOKEN
+        self.shiboken_generator_option_name = f"{SHIBOKEN}-generator"
+        self.pyside_option_name = PYSIDE
 
         # Names to be passed to setuptools.setup() name key,
         # so not package name, but rather project name as it appears
         # in the wheel name and on PyPi.
-        self.shiboken_module_st_name = "shiboken2"
-        self.shiboken_generator_st_name = "shiboken2-generator"
-        self.pyside_st_name = "PySide2"
+        self.shiboken_module_st_name = SHIBOKEN
+        self.shiboken_generator_st_name = f"{SHIBOKEN}-generator"
+        self.pyside_st_name = PYSIDE_MODULE
+
+        # Path to CMake toolchain file when intending to cross compile
+        # the project.
+        self.cmake_toolchain_file = None
+
+        # Store where host shiboken is built during a cross-build.
+        self.shiboken_host_query_path = None
 
         # Used by check_allowed_python_version to validate the
         # interpreter version.
         self.python_version_classifiers = [
             'Programming Language :: Python',
-            'Programming Language :: Python :: 2',
-            'Programming Language :: Python :: 2.7',
             'Programming Language :: Python :: 3',
-            'Programming Language :: Python :: 3.5',
-            'Programming Language :: Python :: 3.6',
-            'Programming Language :: Python :: 3.7',
-            'Programming Language :: Python :: 3.8',
             'Programming Language :: Python :: 3.9',
             'Programming Language :: Python :: 3.10',
             'Programming Language :: Python :: 3.11',
+            'Programming Language :: Python :: 3.12',
+            'Programming Language :: Python :: 3.13',
         ]
 
         self.setup_script_dir = None
 
-    def init_config(self, build_type=None, internal_build_type=None,
-                    cmd_class_dict=None, package_version=None,
-                    ext_modules=None, setup_script_dir=None,
-                    quiet=False):
+    def init_config(self,
+                    build_type=None,
+                    internal_build_type=None,
+                    cmd_class_dict=None,
+                    package_version=None,
+                    ext_modules=None,
+                    setup_script_dir=None,
+                    cmake_toolchain_file=None,
+                    log_level=LogLevel.INFO,
+                    qt_install_path: Path = None):
         """
         Sets up the global singleton config which is used in many parts
         of the setup process.
@@ -123,7 +101,9 @@ class Config(object):
         else:
             self.build_type = self._build_type_all
 
-        self.setup_script_dir = setup_script_dir
+        self.setup_script_dir = Path(setup_script_dir)
+
+        self.cmake_toolchain_file = cmake_toolchain_file
 
         setup_kwargs = {}
         setup_kwargs['long_description'] = self.get_long_description()
@@ -137,10 +117,10 @@ class Config(object):
         setup_kwargs['zip_safe'] = False
         setup_kwargs['cmdclass'] = cmd_class_dict
         setup_kwargs['version'] = package_version
-        setup_kwargs['python_requires'] = ">=2.7, !=3.0.*, !=3.1.*, !=3.2.*, !=3.3.*, !=3.4.*, <3.12"
+        setup_kwargs['python_requires'] = ">=3.9, <3.14"
 
-        if quiet:
-            # Tells distutils / setuptools to be quiet, and only print warnings or errors.
+        if log_level == LogLevel.QUIET:
+            # Tells setuptools to be quiet, and only print warnings or errors.
             # Makes way less noise in the terminal when building.
             setup_kwargs['verbose'] = 0
 
@@ -194,6 +174,8 @@ class Config(object):
             'Topic :: Software Development :: Widget Sets'])
         setup_kwargs['classifiers'] = common_classifiers
 
+        package_name = self.package_name()
+
         if self.internal_build_type == self.shiboken_module_option_name:
             setup_kwargs['name'] = self.shiboken_module_st_name
             setup_kwargs['description'] = "Python / C++ bindings helper module"
@@ -202,25 +184,39 @@ class Config(object):
         elif self.internal_build_type == self.shiboken_generator_option_name:
             setup_kwargs['name'] = self.shiboken_generator_st_name
             setup_kwargs['description'] = "Python / C++ bindings generator"
-            setup_kwargs['install_requires'] = ["{}=={}".format(self.shiboken_module_st_name, package_version)]
+            setup_kwargs['install_requires'] = [
+                f"{self.shiboken_module_st_name}=={package_version}"
+            ]
             setup_kwargs['entry_points'] = {
                 'console_scripts': [
-                    'shiboken2 = {}.scripts.shiboken_tool:main'.format(self.package_name()),
+                    f'{SHIBOKEN} = {package_name}.scripts.shiboken_tool:main',
+                    f'{SHIBOKEN}-genpyi = {package_name}.scripts.shiboken_tool:genpyi',
                 ]
             }
 
         elif self.internal_build_type == self.pyside_option_name:
             setup_kwargs['name'] = self.pyside_st_name
-            setup_kwargs['description'] = "Python bindings for the Qt cross-platform application and UI framework"
-            setup_kwargs['install_requires'] = ["{}=={}".format(self.shiboken_module_st_name, package_version)]
-            setup_kwargs['entry_points'] = {
-                'console_scripts': [
-                    'pyside2-uic = {}.scripts.pyside_tool:uic'.format(self.package_name()),
-                    'pyside2-rcc = {}.scripts.pyside_tool:rcc'.format(self.package_name()),
-                    'pyside2-designer= {}.scripts.pyside_tool:designer'.format(self.package_name()),
-                    'pyside2-lupdate = {}.scripts.pyside_tool:main'.format(self.package_name()),
-                ]
-            }
+            setup_kwargs['description'] = ("Python bindings for the Qt cross-platform application "
+                                           "and UI framework")
+            setup_kwargs['install_requires'] = [
+                f"{self.shiboken_module_st_name}=={package_version}"
+            ]
+            if qt_install_path:
+                _pyside_tools = available_pyside_tools(qt_tools_path=qt_install_path)
+
+                # replacing pyside6-android_deploy by pyside6-android-deploy for consistency
+                # Also, the tool should not exist in any other platform than Linux and macOS
+                _console_scripts = []
+                if ("android_deploy" in _pyside_tools) and sys.platform in ["linux", "darwin"]:
+                    _console_scripts = [(f"{PYSIDE}-android-deploy ="
+                                        " PySide6.scripts.pyside_tool:android_deploy")]
+                _pyside_tools.remove("android_deploy")
+
+                _console_scripts.extend([f'{PYSIDE}-{tool} = {package_name}.scripts.pyside_tool:'
+                                         f'{tool}' for tool in _pyside_tools])
+
+                setup_kwargs['entry_points'] = {'console_scripts': _console_scripts}
+
         self.setup_kwargs = setup_kwargs
 
     def get_long_description(self):
@@ -228,19 +224,19 @@ class Config(object):
         changes_filename = 'CHANGES.rst'
 
         if self.is_internal_shiboken_module_build():
-            readme_filename = 'README.shiboken2.md'
+            readme_filename = f'README.{SHIBOKEN}.md'
         elif self.is_internal_shiboken_generator_build():
-            readme_filename = 'README.shiboken2-generator.md'
+            readme_filename = f'README.{SHIBOKEN}-generator.md'
         elif self.is_internal_pyside_build():
-            readme_filename = 'README.pyside2.md'
+            readme_filename = f'README.{PYSIDE}.md'
 
         content = ''
         changes = ''
         try:
-            with open(os.path.join(self.setup_script_dir, readme_filename)) as f:
+            with open(self.setup_script_dir / readme_filename) as f:
                 readme = f.read()
         except Exception as e:
-            log.error("Couldn't read contents of {}.".format(readme_filename))
+            log.error(f"Couldn't read contents of {readme_filename}. {e}")
             raise
 
         # Don't include CHANGES.rst for now, because we have not decided
@@ -248,15 +244,15 @@ class Config(object):
         include_changes = False
         if include_changes:
             try:
-                with open(os.path.join(self.setup_script_dir, changes_filename)) as f:
+                with open(self.setup_script_dir / changes_filename) as f:
                     changes = f.read()
             except Exception as e:
-                log.error("Couldn't read contents of {}".format(changes_filename))
+                log.error(f"Couldn't read contents of {changes_filename}. {e}")
                 raise
         content += readme
 
         if changes:
-            content += "\n\n" + changes
+            content += f"\n\n{changes}"
 
         return content
 
@@ -269,11 +265,11 @@ class Config(object):
         dashes.
         """
         if self.is_internal_shiboken_module_build():
-            return "shiboken2"
+            return SHIBOKEN
         elif self.is_internal_shiboken_generator_build():
-            return "shiboken2_generator"
+            return f"{SHIBOKEN}_generator"
         elif self.is_internal_pyside_build():
-            return "PySide2"
+            return PYSIDE_MODULE
         else:
             return None
 
@@ -303,8 +299,8 @@ class Config(object):
         the actual module packages are located.
 
         For example when building the shiboken module, setuptools will
-        expect to find the "shiboken2" module sources under
-        "sources/shiboken2/shibokenmodule".
+        expect to find the "shiboken6" module sources under
+        "sources/{SHIBOKEN}/shibokenmodule".
 
         This is really just to satisfy some checks in setuptools
         build_py command, and if we ever properly implement the develop
@@ -312,7 +308,7 @@ class Config(object):
         """
         if self.is_internal_shiboken_module_build():
             return {
-                self.package_name(): "sources/shiboken2/shibokenmodule"
+                self.package_name(): f"sources/{SHIBOKEN}/shibokenmodule"
             }
         elif self.is_internal_shiboken_generator_build():
             # This is left empty on purpose, because the shiboken
@@ -320,7 +316,7 @@ class Config(object):
             return {}
         elif self.is_internal_pyside_build():
             return {
-                self.package_name(): "sources/pyside2/PySide2",
+                self.package_name(): f"sources/{PYSIDE}/{PYSIDE_MODULE}",
             }
         else:
             return {}
@@ -331,9 +327,9 @@ class Config(object):
         :return: A list of directory names under the sources directory.
         """
         if self.is_internal_shiboken_module_build() or self.is_internal_shiboken_generator_build():
-            return ['shiboken2']
+            return [SHIBOKEN]
         elif self.is_internal_pyside_build():
-            return ['pyside2', 'pyside2-tools']
+            return [PYSIDE, 'pyside-tools']
         return None
 
     def set_is_top_level_invocation(self):
@@ -360,6 +356,11 @@ class Config(object):
     def is_top_level_build_pyside(self):
         return self.build_type == self.pyside_option_name
 
+    def is_cross_compile(self):
+        if not self.cmake_toolchain_file:
+            return False
+        return True
+
     def set_internal_build_type(self, internal_build_type):
         self.internal_build_type = internal_build_type
 
@@ -376,7 +377,7 @@ class Config(object):
         """
         Used to skip certain build rules and output, when we know that
         the CMake build of shiboken was already done as part of the
-        top-level "all" build when shiboken2-module was built.
+        top-level "all" build when shiboken6-module was built.
         """
         return self.is_internal_shiboken_generator_build() and self.is_top_level_build_all()
 
