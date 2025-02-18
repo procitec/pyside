@@ -386,7 +386,7 @@ QByteArrayList emulatedCompilerOptions(LanguageLevel level)
         if (level < LanguageLevel::Cpp20)
             result.append("-fdelayed-template-parsing"_ba);
         result.append(QByteArrayLiteral("-Wno-microsoft-enum-value"));
-        result.append("/Zc:__cplusplus"_ba);
+        // result.append("/Zc:__cplusplus"_ba);
         // Fix yvals_core.h:  STL1000: Unexpected compiler version, expected Clang 7 or newer (MSVC2017 update)
         result.append(QByteArrayLiteral("-D_ALLOW_COMPILER_AND_STL_VERSION_MISMATCH"));
         if (needsClangBuiltinIncludes())
