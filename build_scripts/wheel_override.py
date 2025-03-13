@@ -19,14 +19,25 @@ wheel_module_exists = False
 try:
 
     from packaging import tags
-    from wheel import __version__ as wheel_version
-    from wheel.bdist_wheel import bdist_wheel as _bdist_wheel
-    from wheel.bdist_wheel import get_abi_tag, get_platform
-    from wheel.bdist_wheel import safer_name as _safer_name
+    from setuptools import __version__
+
+    if __version__.split(".") > ["70", "1"]:  # see deprecation notice in wheel.bdist_wheel
+        from setuptools.command.bdist_wheel import bdist_wheel as _bdist_wheel
+        from setuptools.command.bdist_wheel import get_abi_tag, get_platform
+        from setuptools.command.bdist_wheel import safer_name as _safer_name
+
+        WHEEL_GENERATOR = f"setuptools ({__version__})"
+    else:
+        from wheel import __version__
+        from wheel.bdist_wheel import bdist_wheel as _bdist_wheel
+        from wheel.bdist_wheel import get_abi_tag, get_platform
+        from wheel.bdist_wheel import safer_name as _safer_name
+
+        WHEEL_GENERATOR = f"bdist_wheel ({__version__})"
 
     wheel_module_exists = True
 except Exception as e:
-    _bdist_wheel, wheel_version = type, ""  # dummy to make class statement happy
+    _bdist_wheel, WHEEL_GENERATOR = type, ""  # dummy to make class statement happy
     log.warning(f"***** Exception while trying to prepare bdist_wheel override class: {e}. "
                 "Skipping wheel overriding.")
 
@@ -230,7 +241,7 @@ class PysideBuildWheel(_bdist_wheel, CommandMixin):
 
     # Copy of get_tag from bdist_wheel.py, to write a triplet Tag
     # only once for the limited_api case.
-    def write_wheelfile(self, wheelfile_base, generator=f'bdist_wheel ({wheel_version})'):
+    def write_wheelfile(self, wheelfile_base, generator=WHEEL_GENERATOR):
         from email.message import Message
         msg = Message()
         msg['Wheel-Version'] = '1.0'  # of the spec
