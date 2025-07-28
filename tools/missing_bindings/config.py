@@ -12,6 +12,7 @@ modules_to_test = {
     'QtQuickWidgets': 'qtquickwidgets-module.html',
     # Broken in 6.5.0
     #'QtQuickControls2': 'qtquickcontrols-module.html',
+    'QtQuickControls2': 'qtquickcontrols2-module.html',
     'QtSql': 'qtsql-module.html',
     'QtWidgets': 'qtwidgets-module.html',
     'QtConcurrent': 'qtconcurrent-module.html',
@@ -23,53 +24,64 @@ modules_to_test = {
     'QtSvgWidgets': 'qtsvgwidgets-module.html',
     'QtUiTools': 'qtuitools-module.html',
     'QtXml': 'qtxml-module.html',
+    'QtQuickTest': 'qtquicktest-module.html',
     'QtTest': 'qttest-module.html',
-    'Qt3DCore': 'qt3dcore-module.html',
-    'Qt3DInput': 'qt3dinput-module.html',
-    'Qt3DLogic': 'qt3dlogic-module.html',
-    'Qt3DRender': 'qt3drender-module.html',
-    'Qt3DAnimation': 'qt3danimation-module.html',
-    'Qt3DExtras': 'qt3dextras-module.html',
-    'QtNetworkAuth':  'qtnetworkauth-module.html',
+    # Deprecated in 6.8
+    #'Qt3DCore': 'qt3dcore-module.html',
+    #'Qt3DInput': 'qt3dinput-module.html',
+    #'Qt3DLogic': 'qt3dlogic-module.html',
+    #'Qt3DRender': 'qt3drender-module.html',
+    #'Qt3DAnimation': 'qt3danimation-module.html',
+    #'Qt3DExtras': 'qt3dextras-module.html',
+    'QtNetworkAuth': 'qtnetworkauth-module.html',
     'QtStateMachine': 'qtstatemachine-module.html',
-    # 'QtCoAp' -- TODO
-    # 'QtMqtt' -- TODO
-    # 'QtOpcUA' -- TODO
+    'QtCoap': 'qtcoap-module.html',
+    'QtMqtt': 'qtmqtt-module.html',
+    'QtOpcUa': 'qtopcua-module.html',
+    'QtVirtualKeyboard': 'qtvirtualkeyboard-module.html',
+    'QtWaylandCompositor': 'qtwaylandcompositor-module.html',
+    'QtWebView': 'qtwebview-module.html',
 
     # 6.1
-    'QtScxml':  'qtscxml-module.html',
-    'QtCharts':  'qtcharts-module.html',
-    'QtDataVisualization':  'qtdatavisualization-module.html',
+    'QtScxml': 'qtscxml-module.html',
 
     # 6.2
     'QtBluetooth': 'qtbluetooth-module.html',
-    'QtPositioning':  'qtpositioning-module.html',
-    'QtMultimedia':  'qtmultimedia-module.html',
-    'QtRemoteObjects':  'qtremoteobjects-module.html',
-    'QtSensors':  'qtsensors-module.html',
-    'QtSerialPort':  'qtserialport-module.html',
-    'QtWebChannel':  'qtwebchannel-module.html',
-    'QtWebEngineCore':  'qtwebenginecore-module.html',
-    'QtWebEngineQuick':  'qtwebenginequick-module.html',
-    'QtWebEngineWidgets':  'qtwebenginewidgets-module.html',
-    'QtWebSockets':  'qtwebsockets-module.html',
+    'QtPositioning': 'qtpositioning-module.html',
+    'QtMultimedia': 'qtmultimedia-module.html',
+    'QtRemoteObjects': 'qtremoteobjects-module.html',
+    'QtSensors': 'qtsensors-module.html',
+    'QtSerialPort': 'qtserialport-module.html',
+    'QtWebChannel': 'qtwebchannel-module.html',
+    'QtWebEngineCore': 'qtwebenginecore-module.html',
+    'QtWebEngineQuick': 'qtwebenginequick-module.html',
+    'QtWebEngineWidgets': 'qtwebenginewidgets-module.html',
+    'QtWebSockets': 'qtwebsockets-module.html',
     'QtHttpServer': 'qthttpserver-module.html',
 
     #  6.3
     #'QtSpeech':  'qtspeech-module.html',
-    'QtMultimediaWidgets':  'qtmultimediawidgets-module.html',
+    'QtMultimediaWidgets': 'qtmultimediawidgets-module.html',
     'QtNfc': 'qtnfc-module.html',
     'QtQuick3D': 'qtquick3d-module.html',
 
     # 6.4
-    'QtPdf':  'qtpdf-module.html',  # this include qtpdfwidgets
+    'QtPdf': 'qtpdf-module.html',  # this include qtpdfwidgets
     'QtSpatialAudio': 'qtspatialaudio-module.html',
 
     # 6.5
-    'QtSerialBus':  'qtserialbus-module.html',
+    'QtSerialBus': 'qtserialbus-module.html',
     'QtTextToSpeech': 'qttexttospeech-module.html',
-    'QtLocation':  'qtlocation-module.html',
+    'QtLocation': 'qtlocation-module.html',
+    'QtGRPC': 'qtgrpc-module.html',
+    'QtPhotobuf': 'qtprotobuf-module.html',
 
+    # 6.6
+    'QtGraphs': 'qtgraphs-module.html',
+
+    # 6.7
+    'QtCharts': 'qtcharts-module-qtcharts.html',
+    'QtDataVisualization': 'qtdatavisualization-module-qtdatavis.html',
 }
 
 types_to_ignore = {
@@ -142,4 +154,12 @@ types_to_ignore = {
     # QtSql
     'QSqlDriverCreator',
     'QSqlDriverPlugin',
+}
+
+# Split modules on PySide
+split_modules = {
+    'QtSvg': 'QtSvgWidgets',
+    'QtPdf': 'QtPdfWidgets',
+    'QtOpenGL': 'QtOpenGLWidgets',
+    'QtGraphs': 'QtGraphsWidgets',
 }

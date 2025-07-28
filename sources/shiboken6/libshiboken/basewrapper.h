@@ -7,6 +7,7 @@
 #include "sbkpython.h"
 #include "shibokenmacros.h"
 #include "sbkmodule.h"
+#include "gilstate.h"
 
 #include <vector>
 #include <string>
@@ -115,6 +116,13 @@ LIBSHIBOKEN_API void disassembleFrame(const char *marker);
 /// PYSIDE-2230: Check if an object is an SbkObject.
 LIBSHIBOKEN_API bool SbkObjectType_Check(PyTypeObject *type);
 
+/// PYSIDE-2701: Some improvements from folding optimizations.
+LIBSHIBOKEN_API PyObject *Sbk_ReturnFromPython_None();
+LIBSHIBOKEN_API PyObject *Sbk_ReturnFromPython_Result(PyObject *pyResult);
+LIBSHIBOKEN_API PyObject *Sbk_ReturnFromPython_Self(PyObject *self);
+LIBSHIBOKEN_API PyObject *Sbk_GetPyOverride(const void *voidThis, Shiboken::GilState &gil,
+                                            const char *funcName, bool *resultCache,
+                                            PyObject **nameCache);
 } // extern "C"
 
 namespace Shiboken

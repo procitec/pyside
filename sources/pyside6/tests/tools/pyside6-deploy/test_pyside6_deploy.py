@@ -15,6 +15,7 @@ from unittest import mock
 
 sys.path.append(os.fspath(Path(__file__).resolve().parents[2]))
 from init_paths import init_test_paths, _get_qt_lib_dir  # noqa: E402
+
 init_test_paths(False)
 
 
@@ -64,7 +65,7 @@ class DeployTestBase(LongSortedOptionTest):
         cls.deploy_lib = importlib.import_module("deploy_lib")
         cls.deploy = importlib.import_module("deploy")
         sys.modules["deploy"] = cls.deploy
-        files_to_ignore = [".cpp.o", ".qsb", ".webp"]
+        files_to_ignore = [".cpp.o", ".qsb"]
         cls.dlls_ignore_nuitka = " ".join([f"--noinclude-dlls=*{file}"
                                            for file in files_to_ignore])
 
@@ -101,11 +102,11 @@ class TestPySide6DeployWidgets(DeployTestBase):
         self.deployment_files = self.temp_example_widgets / "deployment"
         # All the plugins included. This is different from plugins_nuitka, because Nuitka bundles
         # some plugins by default
-        self.all_plugins = ["accessiblebridge", "egldeviceintegrations", "generic", "iconengines",
+        self.all_plugins = ["egldeviceintegrations", "generic", "iconengines",
                             "imageformats", "platforminputcontexts", "platforms",
-                            "platforms/darwin", "platformthemes", "styles", "xcbglintegrations"]
+                            "platformthemes", "styles", "xcbglintegrations"]
         # Plugins that needs to be passed to Nuitka
-        plugins_nuitka = ("accessiblebridge,platforminputcontexts,platforms/darwin")
+        plugins_nuitka = ("platforminputcontexts")
         self.expected_run_cmd = (
             f"{sys.executable} -m nuitka {str(self.main_file)} --follow-imports"
             f" --enable-plugin=pyside6 --output-dir={str(self.deployment_files)} --quiet"
@@ -152,7 +153,7 @@ class TestPySide6DeployWidgets(DeployTestBase):
         self.assertTrue(config_obj.get_value("app", "project_dir").endswith("tetrix"))
         self.assertEqual(config_obj.get_value("app", "exec_directory"), ".")
         self.assertEqual(config_obj.get_value("python", "packages"),
-                         "Nuitka==2.4.8")
+                         "Nuitka==2.5.1")
         self.assertEqual(config_obj.get_value("qt", "qml_files"), "")
         equ_base = "--quiet --noinclude-qt-translations"
         equ_value = equ_base + " --static-libpython=no" if is_pyenv_python() else equ_base
@@ -185,6 +186,55 @@ class TestPySide6DeployWidgets(DeployTestBase):
 
         self.assertEqual(original_output, self.expected_run_cmd)
 
+    @patch("deploy_lib.dependency_util.QtDependencyReader.get_qt_libs_dir")
+    def testExtraModules(self, mock_sitepackages, mock_plugins):
+        mock_sitepackages.return_value = Path(_get_qt_lib_dir())
+        mock_plugins.return_value = self.all_plugins
+        init_result = self.deploy.main(self.main_file, extra_modules_grouped="QtNetwork,QtOpenGL",
+                                       init=True, force=True)
+        self.assertEqual(init_result, None)
+        self.deploy.main(config_file=self.config_file, dry_run=True, force=True)
+
+        # test config file contents
+        config_obj = self.deploy_lib.BaseConfig(config_file=self.config_file)
+        expected_modules = {"Core", "Gui", "Widgets", "Network", "OpenGL"}
+        if sys.platform != "win32":
+            expected_modules.add("DBus")
+        obtained_modules = set(config_obj.get_value("qt", "modules").split(","))
+        self.assertEqual(obtained_modules, expected_modules)
+        self.config_file.unlink()
+
+    @patch("deploy_lib.dependency_util.QtDependencyReader.get_qt_libs_dir")
+    def testExtraIgnoreDirs(self, mock_sitepackages, mock_plugins):
+        # create a directory to ignore
+        ignore_dir = self.temp_example_widgets / "ignore_dir"
+        ignore_dir.mkdir()
+        ignore_file = ignore_dir / "test_ignore.py"
+        ignore_file.write_text("from PySide6 import QtNetwork")
+
+        # rename the .pyproject file inside the example directory
+        project_file = self.temp_example_widgets / "tetrix.pyproject"
+        project_file.rename(self.temp_example_widgets / "tetrix.pyproject.bak")
+
+        mock_sitepackages.return_value = Path(_get_qt_lib_dir())
+        mock_plugins.return_value = self.all_plugins
+        init_result = self.deploy.main(self.main_file, extra_ignore_dirs="ignore_dir",
+                                       init=True, force=True)
+        self.assertEqual(init_result, None)
+        self.deploy.main(config_file=self.config_file, dry_run=True, force=True)
+
+        config_obj = self.deploy_lib.BaseConfig(config_file=self.config_file)
+        expected_modules = {"Core", "Gui", "Widgets"}
+        if sys.platform != "win32":
+            expected_modules.add("DBus")
+        obtained_modules = set(config_obj.get_value("qt", "modules").split(","))
+        self.assertEqual(obtained_modules, expected_modules)
+        self.config_file.unlink()
+
+        #undo rename of project file
+        project_file = self.temp_example_widgets / "tetrix.pyproject.bak"
+        project_file.rename(self.temp_example_widgets / "tetrix.pyproject")
+
 
 @unittest.skipIf(sys.platform == "darwin" and int(platform.mac_ver()[0].split('.')[0]) <= 11,
                  "Test only works on macOS version 12+")
@@ -207,14 +257,13 @@ class TestPySide6DeployQml(DeployTestBase):
 
         # All the plugins included. This is different from plugins_nuitka, because Nuitka bundles
         # some plugins by default
-        self.all_plugins = ["accessiblebridge", "egldeviceintegrations", "generic", "iconengines",
-                            "imageformats", "networkaccess", "networkinformation",
-                            "platforminputcontexts", "platforms", "platforms/darwin",
-                            "platformthemes", "qmltooling", "scenegraph", "tls",
+        self.all_plugins = ["egldeviceintegrations", "generic", "iconengines",
+                            "imageformats", "networkinformation",
+                            "platforminputcontexts", "platforms",
+                            "platformthemes", "qmltooling", "tls",
                             "xcbglintegrations"]
         # Plugins that needs to be passed to Nuitka
-        plugins_nuitka = ("accessiblebridge,networkaccess,networkinformation,platforminputcontexts,"
-                          "platforms/darwin,qml,qmltooling,scenegraph")
+        plugins_nuitka = ("networkinformation,platforminputcontexts,qml,qmltooling")
         self.expected_run_cmd = (
             f"{sys.executable} -m nuitka {str(self.main_file)} --follow-imports"
             f" --enable-plugin=pyside6 --output-dir={str(self.deployment_files)} --quiet"
@@ -268,7 +317,7 @@ class TestPySide6DeployQml(DeployTestBase):
         self.assertTrue(config_obj.get_value("app", "project_dir").endswith("editingmodel"))
         self.assertEqual(config_obj.get_value("app", "exec_directory"), ".")
         self.assertEqual(config_obj.get_value("python", "packages"),
-                         "Nuitka==2.4.8")
+                         "Nuitka==2.5.1")
         self.assertEqual(config_obj.get_value("qt", "qml_files"), "main.qml,MovingRectangle.qml")
         equ_base = "--quiet --noinclude-qt-translations"
         equ_value = equ_base + " --static-libpython=no" if is_pyenv_python() else equ_base
@@ -319,10 +368,10 @@ class TestPySide6DeployWebEngine(DeployTestBase):
     @patch("deploy_lib.dependency_util.QtDependencyReader.get_qt_libs_dir")
     def testWebEngineQuickDryRun(self, mock_sitepackages, mock_plugins):
         mock_sitepackages.return_value = Path(_get_qt_lib_dir())
-        all_plugins = ["accessiblebridge", "egldeviceintegrations", "generic", "iconengines",
-                       "imageformats", "networkaccess", "networkinformation",
-                       "platforminputcontexts", "platforms", "platforms/darwin",
-                       "platformthemes", "qmltooling", "scenegraph", "tls",
+        all_plugins = ["egldeviceintegrations", "generic", "iconengines",
+                       "imageformats", "networkinformation",
+                       "platforminputcontexts", "platforms",
+                       "platformthemes", "qmltooling", "tls",
                        "xcbglintegrations"]
         mock_plugins.return_value = all_plugins
         # this test case retains the QtWebEngine dlls
@@ -331,8 +380,7 @@ class TestPySide6DeployWebEngine(DeployTestBase):
         main_file = self.temp_example_webenginequick / "quicknanobrowser.py"
         deployment_files = self.temp_example_webenginequick / "deployment"
         # Plugins that needs to be passed to Nuitka
-        plugins_nuitka = ("accessiblebridge,networkaccess,networkinformation,platforminputcontexts,"
-                          "platforms/darwin,qml,qmltooling,scenegraph")
+        plugins_nuitka = ("networkinformation,platforminputcontexts,qml,qmltooling")
         qml_files = [
             "ApplicationRoot.qml",
             "BrowserDialog.qml",
@@ -437,17 +485,17 @@ class TestLongCommand(DeployTestBase):
         # check if command_str ends with deploy_main.py
         self.assertTrue(command_str.endswith("deploy_main.py"))
 
-        # check if deploy_main.py startes with # nuitka-project:
+        # check if deploy_main.py starts with # nuitka-project:
         with open(self.temp_example_qml / "deploy_main.py", "r") as file:
-            # check if 517 lines start with # nuitka-project:
+            # check if 516 lines start with # nuitka-project:
             self.assertEqual(len([line for line in file.readlines()
-                                  if line.startswith("# nuitka-project:")]), 517)
+                                  if line.startswith("# nuitka-project:")]), 516)
 
 
 @unittest.skipIf(sys.platform == "darwin" and int(platform.mac_ver()[0].split('.')[0]) <= 11,
                  "Test only works on macOS version 12+")
 @patch("deploy_lib.config.QtDependencyReader.find_plugin_dependencies")
-class DSProjectTest(DeployTestBase):
+class EmptyDSProjectTest(DeployTestBase):
     @classmethod
     def setUpClass(cls):
         super().setUpClass()
@@ -455,11 +503,16 @@ class DSProjectTest(DeployTestBase):
         # setup a test DS Python project
         base_path = Path(cls.temp_dir) / "PythonProject"
 
+        project_name = "TestProject"
         files = [
             base_path / "Python" / "autogen" / "settings.py",
+            base_path / "Python" / "autogen" / "resources.py",
             base_path / "Python" / "main.py",
-            base_path / "PythonProject" / "test.qml",
-            base_path / "PythonProjectContent" / "test.qml"
+            base_path / project_name / "test.qml",
+            base_path / f"{project_name}Content" / "test.qml",
+            base_path / f"{project_name}.qmlproject",
+            base_path / f"{project_name}.qmlproject.qtds",
+            base_path / f"{project_name}.qrc"
         ]
 
         # Create the files
@@ -473,17 +526,12 @@ class DSProjectTest(DeployTestBase):
         os.chdir(self.temp_example)
         self.temp_example = self.temp_example.resolve()
         self.main_file = self.temp_example / "Python" / "main.py"
-        self.main_patch_file = self.temp_example / "Python" / "main_patch.py"
         self.deployment_files = self.temp_example / "Python" / "deployment"
 
         self.expected_run_cmd = (
-            f"{sys.executable} -m nuitka {self.main_patch_file} --follow-imports"
+            f"{sys.executable} -m nuitka {self.main_file} --follow-imports"
             f" --enable-plugin=pyside6 --output-dir={self.deployment_files} --quiet"
             f" --noinclude-qt-translations"
-            f" --include-data-dir={self.temp_example / 'PythonProjectContent'}="
-            "./PythonProjectContent"
-            f" --include-data-dir={self.temp_example / 'Python'}=./Python"
-            f" --include-data-dir={self.temp_example / 'PythonProject'}=./PythonProject"
             f" {self.dlls_ignore_nuitka}"
             f" --noinclude-dlls=*/qml/QtQuickEffectMaker/*"
             f" --include-qt-plugins=qml"
@@ -518,7 +566,7 @@ class DSProjectTest(DeployTestBase):
     def testDryRun(self, mock_plugins):
         with patch("deploy_lib.config.run_qmlimportscanner") as mock_qmlimportscanner:  # noqa: F841
             original_output = self.deploy.main(self.main_file, dry_run=True, force=True)
-            self.assertEqual(original_output, self.expected_run_cmd)
+            self.assertEqual(self.expected_run_cmd, original_output)
 
     @patch("deploy_lib.dependency_util.QtDependencyReader.get_qt_libs_dir")
     def testConfigFile(self, mock_sitepackages, mock_plugins):

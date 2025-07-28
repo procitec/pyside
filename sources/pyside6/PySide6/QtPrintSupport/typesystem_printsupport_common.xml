@@ -28,8 +28,6 @@
     <enum-type name="PrintEnginePropertyKey"/>
   </object-type>
   <value-type name="QPrinterInfo"/>
-  <rejection class="QPrinter" function-name="printerSelectionOption"/>
-  <rejection class="QPrinter" function-name="setPrinterSelectionOption"/>
 
   <object-type name="QPrinter" >
     <enum-type name="ColorMode"/>
@@ -55,7 +53,7 @@
     <!-- fixme: Check if this is still required in Qt 6:
         bool QPagedPaintDevice::setPageSize(QPageSize)
         void QPagedPaintDevice::setPageSize(QPagedPaintDevice::PageSize) -->
-    <add-function signature="setPageSize(const QPageSize&amp;)" return-type="bool">
+    <add-function signature="setPageSize(const QPageSize&amp;@size@)" return-type="bool">
         <inject-code file="../glue/qtprintsupport.cpp" snippet="setpagesize" />
     </add-function>
   </object-type>
@@ -68,4 +66,3 @@
   </object-type>
 
 </typesystem>
-

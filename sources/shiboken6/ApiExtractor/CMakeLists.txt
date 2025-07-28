@@ -35,7 +35,9 @@ customtypenentry.h
 debughelpers_p.h
 dependency.h
 documentation.cpp documentation.h
+documentation_enums.h
 dotview.cpp dotview.h
+filecache.cpp filecache.h
 enclosingclassmixin.cpp enclosingclassmixin.h
 enumtypeentry.h
 enumvaluetypeentry.h

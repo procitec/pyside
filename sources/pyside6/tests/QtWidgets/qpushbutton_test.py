@@ -34,7 +34,7 @@ class QPushButtonTest(UsesQApplication):
         w = MyWidget()
         w.show()
 
-        timer = QTimer.singleShot(100, self.app.quit)
+        QTimer.singleShot(100, self.app.quit)
         self.app.exec()
 
     def buttonCb(self, checked):
@@ -43,7 +43,7 @@ class QPushButtonTest(UsesQApplication):
     def testBoolinSignal(self):
         b = QPushButton()
         b.setCheckable(True)
-        b.setShortcut(Qt.Key_A)
+        b.setShortcut(Qt.Key.Key_A)
         self._clicked = False
         b.toggled[bool].connect(self.buttonCb)
         b.toggle()
@@ -52,4 +52,3 @@ class QPushButtonTest(UsesQApplication):
 
 if __name__ == '__main__':
     unittest.main()
-

@@ -10,11 +10,14 @@ import re
 import sys
 import typing
 import warnings
+import collections.abc
+import abc
 
 from types import SimpleNamespace
-from shibokensupport.signature.mapping import (type_map, update_mapping,
-    namespace, _NotCalled, ResultVariable, ArrayLikeVariable)  # noqa E:128
+from shibokensupport.signature.mapping import (type_map, type_map_tuple, update_mapping,
+    namespace, _NotCalled, ResultVariable, ArrayLikeVariable, pyside_modules)  # noqa E:128
 from shibokensupport.signature.lib.tool import build_brace_pattern
+from shibokensupport.signature import make_snake_case_name
 
 _DEBUG = False
 LIST_KEYWORDS = False
@@ -73,6 +76,9 @@ def _get_flag_enum_option():
     # _PepUnicode_AsString: Fix a broken promise
     if pyminver and pyminver >= (3, 10):
         warnings.warn(f"{p} _PepUnicode_AsString can now be replaced by PyUnicode_AsUTF8! ***")
+    # PYSIDE-3012: Emit a warning when we may simplify layout.py and pyi_generator.py
+    if pyminver and pyminver >= (3, 10):
+        warnings.warn(f"{p} layout.py and pyi_generator.py can now remove old code! ***")
     # PYSIDE-1960: Emit a warning when we may remove bufferprocs_py37.(cpp|h)
     if pyminver and pyminver >= (3, 11):
         warnings.warn(f"{p} The files bufferprocs_py37.(cpp|h) should be removed ASAP! ***")
@@ -106,21 +112,21 @@ def dprint(*args, **kw):
             sys.stdout.flush()
 
 
-_cache = {}
+class ArglistParser:
+    def __init__(self):
+        regex = build_brace_pattern(level=3, separators=",")
+        rec = re.compile(regex, flags=re.VERBOSE)
+        self._finditer = rec.finditer
+
+    def parse(self, argstr):
+        return list(x.group(1).strip() for x in self._finditer(argstr))
+
+
+arglistParser = ArglistParser()
 
 
 def _parse_arglist(argstr):
-    # The following is a split re. The string is broken into pieces which are
-    # between the recognized strings. Because the re has groups, both the
-    # strings and the separators are returned, where the strings are not
-    # interesting at all: They are just the commata.
-    key = "_parse_arglist"
-    if key not in _cache:
-        regex = build_brace_pattern(level=3, separators=",")
-        _cache[key] = re.compile(regex, flags=re.VERBOSE)
-    split = _cache[key].split
-    # Note: this list is interspersed with "," and surrounded by ""
-    return [x.strip() for x in split(argstr) if x.strip() not in ("", ",")]
+    return arglistParser.parse(argstr)
 
 
 def _parse_line(line):
@@ -168,8 +174,9 @@ def _parse_line(line):
     return vars(ret)
 
 
-def _using_snake_case():
+def using_snake_case():
     # Note that this function should stay here where we use snake_case.
+    # This function is only meant for creating correct PYI files.
     if "PySide6.QtCore" not in sys.modules:
         return False
     from PySide6.QtCore import QDir
@@ -191,24 +198,13 @@ def _handle_instance_fixup(thing):
         return thing
     start, stop = match.start(), match.end() - 1
     pre, func, args = thing[:start], thing[start:stop], thing[stop:]
-    if func[0].isupper() or func.startswith("gl") and func[2:3].isupper():
-        return thing
-    # Now convert this string to snake case.
-    snake_func = ""
-    for idx, char in enumerate(func):
-        if char.isupper():
-            if idx and func[idx - 1].isupper():
-                # two upper chars are forbidden
-                return thing
-            snake_func += f"_{char.lower()}"
-        else:
-            snake_func += char
+    snake_func = make_snake_case_name(func)
     return f"{pre}{snake_func}{args}"
 
 
 def make_good_value(thing, valtype):
     # PYSIDE-1019: Handle instance calls (which are really seldom)
-    if "(" in thing and _using_snake_case():
+    if "(" in thing and using_snake_case():
         thing = _handle_instance_fixup(thing)
     try:
         if thing.endswith("()"):
@@ -252,12 +248,13 @@ def get_name(thing):
 
 def _resolve_value(thing, valtype, line):
     if thing in ("0", "None") and valtype:
-        if valtype.startswith("PySide6.") or valtype.startswith("typing."):
+        if valtype.startswith(("PySide6.", "typing.", "collections.abc.")):
             return None
-        map = type_map[valtype]
+        mapped = type_map.get(valtype)
         # typing.Any: '_SpecialForm' object has no attribute '__name__'
-        name = get_name(map) if hasattr(map, "__name__") else str(map)
+        name = get_name(mapped) if hasattr(mapped, "__name__") else str(mapped)
         thing = f"zero({name})"
+        type_map[f"zero({name})"] = None
     if thing in type_map:
         return type_map[thing]
     res = make_good_value(thing, valtype)
@@ -267,6 +264,9 @@ def _resolve_value(thing, valtype, line):
     res = try_to_guess(thing, valtype) if valtype else None
     if res is not None:
         type_map[thing] = res
+        return res
+    # Still not found. Look into the imported modules.
+    if res := get_from_another_module(thing):
         return res
     warnings.warn(f"""pyside_type_init:_resolve_value
 
@@ -302,13 +302,16 @@ def to_string(thing):
     # so we fall back to use __name__ before the next condition.
     if isinstance(thing, typing.TypeVar):
         return get_name(thing)
-    if hasattr(thing, "__name__") and thing.__module__ != "typing":
+    if hasattr(thing, "__name__") and thing.__module__ not in ("typing", "collections.abc"):
         m = thing.__module__
         dot = "." in str(thing) or m not in (thing.__qualname__, "builtins")
         name = get_name(thing)
         ret = m + "." + name if dot else name
         assert (eval(ret, globals(), namespace))
         return ret
+    elif type(thing) is abc.ABCMeta:
+        # collections.abc.Sequence without argument is very different from typing.
+        return f"{thing.__module__}.{thing.__name__}"
     # Note: This captures things from the typing module:
     return str(thing)
 
@@ -323,12 +326,27 @@ def handle_matrix(arg):
     return eval(result, globals(), namespace)
 
 
+def get_from_another_module(thing):
+    top = thing.split(".", 1)[0] if "." in thing else thing
+    for mod_name in pyside_modules:
+        mod = sys.modules[mod_name]
+        if hasattr(mod, top):
+            try:
+                res = eval(f"{mod_name}.{thing}", globals(), namespace)
+                type_map[thing] = res
+                return res
+            except AttributeError:
+                # Maybe it was another module...
+                pass
+    return None
+
+
 def _resolve_type(thing, line, level, var_handler, func_name=None):
     # manual set of 'str' instead of 'bytes'
     if func_name:
         new_thing = (func_name, thing)
-        if new_thing in type_map:
-            return type_map[new_thing]
+        if new_thing in type_map_tuple:
+            return type_map_tuple[new_thing]
 
     # Capture total replacements, first. Happens in
     # "PySide6.QtCore.QCborStreamReader.StringResult[PySide6.QtCore.QByteArray]"
@@ -401,7 +419,7 @@ def handle_argvar(obj):
     Currently, the best approximation is types.Sequence.
     We want to change that to types.Iterable in the near future.
     """
-    return _handle_generic(obj, typing.Sequence)
+    return _handle_generic(obj, collections.abc.Sequence)
 
 
 def handle_retvar(obj):
@@ -481,7 +499,7 @@ def fix_variables(props, line):
     for idx, name in enumerate(varnames):
         ann = safe_annos[name]
         if isinstance(ann, ArrayLikeVariable):
-            ann = typing.Sequence[ann.type]
+            ann = collections.abc.Sequence[ann.type]
             annos[name] = ann
         if not isinstance(ann, ResultVariable):
             continue

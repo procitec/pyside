@@ -97,8 +97,10 @@ private:
                          QtXmlToSphinxImages *images) const;
     void writeParameterType(TextStream &s, const AbstractMetaClassCPtr &cppClass,
                             const AbstractMetaArgument &arg) const;
+    void writeFormattedText(TextStream &s, const DocModification &mod,
+                            const QString &scope, QtXmlToSphinxImages *images) const;
     void writeFormattedText(TextStream &s, const QString &doc,
-                            Documentation::Format format,
+                            DocumentationFormat format,
                             const QString &scope,
                             QtXmlToSphinxImages *images) const;
     void writeFormattedBriefText(TextStream &s, const Documentation &doc,
@@ -127,12 +129,12 @@ private:
                       const DocPackage &docPackage);
     void writeAdditionalDocumentation() const;
     bool writeInheritanceFile();
-    ResolvedDocImage resolveImage(const QtXmlToSphinxImage &image,
-                                  const QStringList &sourceDirs,
-                                  const QString &targetDir) const;
-    void copyParsedImages(const QtXmlToSphinxImages &images,
-                          const QStringList &sourceDocumentFiles,
-                          const QString &targetDocumentFile) const;
+    static ResolvedDocImage resolveImage(const QtXmlToSphinxImage &image,
+                                         const QStringList &sourceDirs,
+                                         const QString &targetDir);
+    static void copyParsedImages(const QtXmlToSphinxImages &images,
+                                 const QStringList &sourceDocumentFiles,
+                                 const QString &targetDocumentFile);
     QString translateToPythonType(const AbstractMetaType &type,
                                   const AbstractMetaClassCPtr &cppClass,
                                   bool createRef = true) const;

@@ -147,7 +147,7 @@
     <object-type name="QJSEngine">
         <enum-type name="Extension" flags="Extensions"/>
         <enum-type name="ObjectOwnership"/>
-        <add-function signature="toScriptValue(const QVariant&amp;)" return-type="QJSValue">
+        <add-function signature="toScriptValue(const QVariant&amp;@value@)" return-type="QJSValue">
             <inject-code class="target" position="end" file="../glue/qtqml.cpp" snippet="qjsengine-toscriptvalue"/>
         </add-function>
     </object-type>
@@ -342,4 +342,5 @@
     <!-- Suppress anonymous enum warning -->
     <suppress-warning text="Anonymous enum (QmlCurrentSingletonTypeRegistrationVersion) does not have a type entry"/>
     <suppress-warning text="Enum 'QQmlModuleImportSpecialVersions' does not have a type entry"/>
+    <suppress-warning text="^Unable to decide type of property: .*QQmlListProperty.*Unable to translate type.*QQmlListProperty.*Cannot find type entry for.*QQmlListProperty.*$"/>
 </typesystem>

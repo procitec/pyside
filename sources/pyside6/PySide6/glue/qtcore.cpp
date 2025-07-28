@@ -514,7 +514,10 @@ PyTuple_SetItem(%PYARG_0, 1, %CONVERTTOPYTHON[int](yearNumber));
 // @snippet qdatetime-1
 QDate date(%1, %2, %3);
 QTime time(%4, %5, %6, %7);
-%0 = new %TYPE(date, time, Qt::TimeSpec(%8));
+%0 = new %TYPE(date, time,
+               Qt::TimeSpec(%8) == Qt::UTC
+               ? QTimeZone(QTimeZone::UTC) : QTimeZone(QTimeZone::LocalTime));
+Shiboken::Warnings::warnDeprecated("QDateTime", "QDateTime(..., Qt::TimeSpec spec)");
 // @snippet qdatetime-1
 
 // @snippet qdatetime-2
@@ -526,7 +529,9 @@ QTime time(%4, %5, %6);
 // @snippet qdatetime-3
 QDate date(%1, %2, %3);
 QTime time(%4, %5, %6, %7);
-%0 = new %TYPE(date, time, %8);
+%0 = new %TYPE(date, time,
+               %8 == Qt::UTC ? QTimeZone(QTimeZone::UTC) : QTimeZone(QTimeZone::LocalTime));
+Shiboken::Warnings::warnDeprecated("QDateTime", "QDateTime(..., Qt::TimeSpec spec)");
 // @snippet qdatetime-3
 
 // @snippet qdatetime-topython
@@ -1233,7 +1238,7 @@ PySideEasingCurveFunctor::init();
 // @snippet qeasingcurve
 
 // @snippet qeasingcurve-setcustomtype
-QEasingCurve::EasingFunction func = PySideEasingCurveFunctor::createCustomFuntion(%PYSELF, %PYARG_1);
+QEasingCurve::EasingFunction func = PySideEasingCurveFunctor::createCustomFunction(%PYSELF, %PYARG_1);
 if (func)
     %CPPSELF.%FUNCTION_NAME(func);
 // @snippet qeasingcurve-setcustomtype
@@ -1281,13 +1286,11 @@ QT_END_NAMESPACE
 %PYARG_0 = %CONVERTTOPYTHON[%RETURN_TYPE](%0);
 // @snippet qt-qunregisterresourcedata
 
-// @snippet use-stream-for-format-security
-// Uses the stream version for security reasons
-// see gcc man page at -Wformat-security
+// @snippet qdebug-format-string
 Py_BEGIN_ALLOW_THREADS
-%FUNCTION_NAME() << %1;
+%FUNCTION_NAME("%s", %1); // Uses placeholder for security reasons
 Py_END_ALLOW_THREADS
-// @snippet use-stream-for-format-security
+// @snippet qdebug-format-string
 
 // @snippet qresource-registerResource
  auto ptr = reinterpret_cast<uchar *>(Shiboken::Buffer::getPointer(%PYARG_1));
@@ -1806,13 +1809,6 @@ if (dataChar == nullptr) {
 }
 // @snippet qdatastream-read-bytes
 
-// @snippet qloggingcategory_to_cpp
-// PYSIDE-2404: Usage of the `get()` function not necessary, the type exists.
-    QLoggingCategory *category{nullptr};
-    Shiboken::Conversions::pythonToCppPointer(SbkPySide6_QtCoreTypeStructs[SBK_QLoggingCategory_IDX].type,
-    pyArgs[0], &(category));
-// @snippet qloggingcategory_to_cpp
-
 // Q_ARG()-equivalent
 // @snippet q_arg
 const QArgData qArgData = qArgDataFromPyType(%1);
@@ -2171,3 +2167,21 @@ QByteArray result = '<' + QByteArray(Py_TYPE(%PYSELF)->tp_name)
                     + %CPPSELF.absoluteFilePath().toUtf8() + "\")>";
 %PYARG_0 = Shiboken::String::fromCString(result.constData());
 // @snippet qdirlisting-direntry-repr
+
+// @snippet return-native-eventfilter-conversion
+%RETURN_TYPE %out = false;
+if (PySequence_Check(%PYARG_0) != 0 && PySequence_Size(%PYARG_0) == 2) {
+    Shiboken::AutoDecRef pyItem(PySequence_GetItem(%PYARG_0, 0));
+    %out = %CONVERTTOCPP[bool](pyItem);
+    if (result) {
+        Shiboken::AutoDecRef pyResultItem(PySequence_GetItem(pyResult, 1));
+        *result = %CONVERTTOCPP[qintptr](pyResultItem);
+    }
+}
+// @snippet return-native-eventfilter-conversion
+
+// @snippet return-native-eventfilter
+%PYARG_0 = PyTuple_New(2);
+PyTuple_SetItem(%PYARG_0, 0, %CONVERTTOPYTHON[%RETURN_TYPE](%0));
+PyTuple_SetItem(%PYARG_0, 1, %CONVERTTOPYTHON[qintptr](*result_out));
+// @snippet return-native-eventfilter

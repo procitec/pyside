@@ -137,8 +137,11 @@ static void parseWebXmlElement(WebXmlCodeTag tag, const QXmlStreamAttributes &at
     }
         break;
     case WebXmlCodeTag::Parameter:
-        Q_ASSERT(!cd->functions.isEmpty());
-        cd->functions.last().parameters.append(attributes.value(u"type"_s).toString());
+        Q_ASSERT(!cd->functions.isEmpty()); {
+        FunctionDocumentation &last = cd->functions.last();
+        last.parameters.append(attributes.value(u"type"_s).toString());
+        last.parameterNames.append(attributes.value(u"name"_s).toString());
+    }
         break;
     case WebXmlCodeTag::Property: {
         PropertyDocumentation pd;
@@ -192,23 +195,15 @@ static QString msgXmlError(const QString &fileName, const QXmlStreamReader &read
     return result;
 }
 
-std::optional<ClassDocumentation> parseWebXml(const QString &fileName, QString *errorMessage)
+static bool parseWebXmlHelper(QFile *file, ClassDocumentation *result, QString *errorMessage)
 {
-    ClassDocumentation result;
-
-    QFile file(fileName);
-    if (!file.open(QIODevice::Text | QIODevice::ReadOnly)) {
-        *errorMessage = msgCannotOpenForReading(file);
-        return std::nullopt;
-    }
-
     WebXmlCodeTag lastTag = WebXmlCodeTag::Other;
-    QXmlStreamReader reader(&file);
+    QXmlStreamReader reader(file);
     while (!reader.atEnd()) {
         switch (reader.readNext()) {
         case QXmlStreamReader::StartElement: {
             const auto currentTag = tag(reader.name());
-            parseWebXmlElement(currentTag, reader.attributes(), &result);
+            parseWebXmlElement(currentTag, reader.attributes(), result);
             switch (currentTag) { // Store relevant tags in lastTag
             case WebXmlCodeTag::Class:
             case WebXmlCodeTag::Function:
@@ -222,16 +217,16 @@ std::optional<ClassDocumentation> parseWebXml(const QString &fileName, QString *
                 QString *target = nullptr;
                 switch (lastTag) {
                 case WebXmlCodeTag::Class:
-                    target = &result.description;
+                    target = &result->description;
                     break;
                 case WebXmlCodeTag::Function:
-                    target = &result.functions.last().description;
+                    target = &result->functions.last().description;
                     break;
                 case WebXmlCodeTag::Enum:
-                    target = &result.enums.last().description;
+                    target = &result->enums.last().description;
                     break;
                 case WebXmlCodeTag::Property:
-                    target = &result.properties.last().description;
+                    target = &result->properties.last().description;
                 default:
                     break;
                 }
@@ -249,12 +244,50 @@ std::optional<ClassDocumentation> parseWebXml(const QString &fileName, QString *
     }
 
     if (reader.error() != QXmlStreamReader::NoError) {
-        *errorMessage= msgXmlError(fileName, reader);
-        return std::nullopt;
+        *errorMessage= msgXmlError(file->fileName(), reader);
+        return false;
+    }
+
+    return result;
+}
+
+std::optional<ClassDocumentation> parseWebXml(const QStringList &fileNames, QString *errorMessage)
+{
+    ClassDocumentation result;
+    for (const auto &fileName : fileNames) {
+        QFile file(fileName);
+        if (!file.open(QIODevice::Text | QIODevice::ReadOnly)) {
+            *errorMessage = msgCannotOpenForReading(file);
+            return std::nullopt;
+        }
+        if (!parseWebXmlHelper(&file, &result, errorMessage))
+            return std::nullopt;
     }
 
     sortDocumentation(&result);
     return result;
+}
+
+// Helpers to remove some sections with information on how to build
+// and link and the C++ reference from the WebXML module description
+static void removeElement(QByteArrayView begin, QByteArrayView end,
+                          QByteArray *data)
+{
+    auto startPos = data->indexOf(begin);
+    if (startPos != -1) {
+        auto endPos = data->indexOf(end, startPos + begin.size());
+        if (endPos != -1)
+            data->remove(startPos, endPos + end.size() - startPos);
+    }
+}
+
+static void removeSection(const QByteArray &id,
+                          QByteArray *data)
+{
+    QByteArray contentBegin = "<contents name=\"" + id + '"';
+    removeElement(contentBegin, "/>"_ba, data);
+    QByteArray sectionBegin = "<section id=\""_ba + id + "\">"_ba;
+    removeElement(sectionBegin, "</section>"_ba, data);
 }
 
 QString webXmlModuleDescription(const QString &fileName, QString *errorMessage)
@@ -265,8 +298,21 @@ QString webXmlModuleDescription(const QString &fileName, QString *errorMessage)
         return {};
     }
 
+    QByteArray text = file.readAll();
+    file.close();
+    static const QByteArrayList cppSectionIds{
+        "api-reference"_ba, "building-with-cmake"_ba, "building-with-qmake"_ba,
+        "c-api"_ba, "c-classes"_ba, "examples"_ba, "qml-api"_ba, "reference"_ba,
+        "reference-and-examples"_ba, "using-the-module"_ba
+    };
+    for (const auto &cppSectionId : cppSectionIds)
+        removeSection(cppSectionId, &text);
+
+    QBuffer buffer(&text);
+    buffer.open(QIODevice::ReadOnly);
+
     QString result;
-    QXmlStreamReader reader(&file);
+    QXmlStreamReader reader(&buffer);
     while (!reader.atEnd()) {
         switch (reader.readNext()) {
         case QXmlStreamReader::StartElement:

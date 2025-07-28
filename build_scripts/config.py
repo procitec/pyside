@@ -2,15 +2,22 @@
 # SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 from __future__ import annotations
 
+import os
 import sys
-from .log import log, LogLevel
 from pathlib import Path
+from typing import Any
 
-from . import PYSIDE, PYSIDE_MODULE, SHIBOKEN
-from .utils import available_pyside_tools
+from . import PYPROJECT_PATH, PYSIDE, PYSIDE_MODULE, SHIBOKEN
+from .log import LogLevel, log
+from .utils import available_pyside_tools, Singleton
+
+try:
+    import tomllib
+except ModuleNotFoundError:
+    import tomli as tomllib
 
 
-class Config(object):
+class Config(metaclass=Singleton):
     def __init__(self):
         # Constants
         self._build_type_all = "all"
@@ -23,7 +30,7 @@ class Config(object):
         # The setup.py invocation type.
         # top-level
         # internal
-        self.invocation_type = None
+        self.invocation_type: str = ""
 
         # The type of the top-level build.
         # all - build shiboken6 module, shiboken6-generator and PySide6
@@ -31,11 +38,11 @@ class Config(object):
         # shiboken6 - build only shiboken6 module
         # shiboken6-generator - build only the shiboken6-generator
         # pyside6 - build only PySide6 modules
-        self.build_type = None
+        self.build_type: str = ""
 
         # The internal build type, used for internal invocations of
         # setup.py to build a specific module only.
-        self.internal_build_type = None
+        self.internal_build_type: str = ""
 
         # Options that can be given to --build-type and
         # --internal-build-type
@@ -46,41 +53,51 @@ class Config(object):
         # Names to be passed to setuptools.setup() name key,
         # so not package name, but rather project name as it appears
         # in the wheel name and on PyPi.
-        self.shiboken_module_st_name = SHIBOKEN
-        self.shiboken_generator_st_name = f"{SHIBOKEN}-generator"
-        self.pyside_st_name = PYSIDE_MODULE
+        self.shiboken_module_st_name: str = SHIBOKEN
+        self.shiboken_generator_st_name: str = f"{SHIBOKEN}-generator"
+        self.pyside_st_name: str = PYSIDE_MODULE
 
         # Path to CMake toolchain file when intending to cross compile
         # the project.
-        self.cmake_toolchain_file = None
+        self.cmake_toolchain_file: str | os.PathLike = ""
 
         # Store where host shiboken is built during a cross-build.
-        self.shiboken_host_query_path = None
+        self.shiboken_host_query_path: str = ""
 
-        # Used by check_allowed_python_version to validate the
-        # interpreter version.
-        self.python_version_classifiers = [
-            'Programming Language :: Python',
-            'Programming Language :: Python :: 3',
-            'Programming Language :: Python :: 3.9',
-            'Programming Language :: Python :: 3.10',
-            'Programming Language :: Python :: 3.11',
-            'Programming Language :: Python :: 3.12',
-            'Programming Language :: Python :: 3.13',
-        ]
+        self.setup_script_dir: str | os.PathLike = ""
 
-        self.setup_script_dir = None
+        # Getting data from base pyproject.toml file to be consistent
+
+        if not PYPROJECT_PATH.exists():
+            log.error("'pyproject.toml.base' not found in '{pyproject_path}'")
+
+        with open(PYPROJECT_PATH, "rb") as f:
+            _pyproject_data = tomllib.load(f)["project"]
+
+        self.setup_kwargs: dict[str, Any] = {}
+        self.setup_kwargs['long_description_content_type'] = 'text/markdown'
+
+        self.setup_kwargs['keywords'] = _pyproject_data["keywords"]
+        _author, _email = _pyproject_data["authors"][0]
+        self.setup_kwargs['author'] = _author
+        self.setup_kwargs['author_email'] = _email
+        self.setup_kwargs['url'] = _pyproject_data["urls"]["Homepage"]
+        self.setup_kwargs['license'] = _pyproject_data["license"]["text"]
+        self.setup_kwargs['python_requires'] = _pyproject_data["requires-python"]
+
+        self.classifiers = _pyproject_data["classifiers"]
+        self.setup_kwargs['classifiers'] = self.classifiers
 
     def init_config(self,
-                    build_type=None,
-                    internal_build_type=None,
+                    build_type="",
+                    internal_build_type="",
                     cmd_class_dict=None,
                     package_version=None,
                     ext_modules=None,
-                    setup_script_dir=None,
-                    cmake_toolchain_file=None,
+                    setup_script_dir: str | os.PathLike = "",
+                    cmake_toolchain_file: str | os.PathLike = "",
                     log_level=LogLevel.INFO,
-                    qt_install_path: Path = None):
+                    qt_install_dir: str | os.PathLike = ""):
         """
         Sets up the global singleton config which is used in many parts
         of the setup process.
@@ -105,24 +122,14 @@ class Config(object):
 
         self.cmake_toolchain_file = cmake_toolchain_file
 
-        setup_kwargs = {}
-        setup_kwargs['long_description'] = self.get_long_description()
-        setup_kwargs['long_description_content_type'] = 'text/markdown'
-        setup_kwargs['keywords'] = 'Qt'
-        setup_kwargs['author'] = 'Qt for Python Team'
-        setup_kwargs['author_email'] = 'pyside@qt-project.org'
-        setup_kwargs['url'] = 'https://www.pyside.org'
-        setup_kwargs['download_url'] = 'https://download.qt.io/official_releases/QtForPython'
-        setup_kwargs['license'] = 'LGPL'
-        setup_kwargs['zip_safe'] = False
-        setup_kwargs['cmdclass'] = cmd_class_dict
-        setup_kwargs['version'] = package_version
-        setup_kwargs['python_requires'] = ">=3.9, <3.14"
+        self.setup_kwargs['long_description'] = self.get_long_description()
+        self.setup_kwargs['cmdclass'] = cmd_class_dict
+        self.setup_kwargs['version'] = package_version
 
         if log_level == LogLevel.QUIET:
             # Tells setuptools to be quiet, and only print warnings or errors.
             # Makes way less noise in the terminal when building.
-            setup_kwargs['verbose'] = 0
+            self.setup_kwargs['verbose'] = 0
 
         # Setting these two keys is still a bit of a discussion point.
         # In general not setting them will allow using "build" and
@@ -140,54 +147,29 @@ class Config(object):
         # The only plausible usage of it, is if we will implement a
         # correctly functioning setup.py develop command (or bdist_egg).
         # But currently that doesn't seem to work.
-        setup_kwargs['packages'] = self.get_setup_tools_packages_for_current_build()
-        setup_kwargs['package_dir'] = self.get_package_name_to_dir_path_mapping()
+        self.setup_kwargs['packages'] = self.get_setup_tools_packages_for_current_build()
+        self.setup_kwargs['package_dir'] = self.get_package_name_to_dir_path_mapping()
 
         # Add a bogus extension module (will never be built here since
         # we are overriding the build command to do it using cmake) so
         # things like bdist_egg will know that there are extension
         # modules and will name the dist with the full platform info.
-        setup_kwargs['ext_modules'] = ext_modules
-
-        common_classifiers = [
-            'Development Status :: 5 - Production/Stable',
-            'Environment :: Console',
-            'Environment :: MacOS X',
-            'Environment :: X11 Applications :: Qt',
-            'Environment :: Win32 (MS Windows)',
-            'Intended Audience :: Developers',
-            'License :: OSI Approved :: GNU Library or Lesser General Public License (LGPL)',
-            'License :: Other/Proprietary License',
-            'Operating System :: MacOS :: MacOS X',
-            'Operating System :: POSIX',
-            'Operating System :: POSIX :: Linux',
-            'Operating System :: Microsoft',
-            'Operating System :: Microsoft :: Windows',
-            'Programming Language :: C++']
-        common_classifiers.extend(self.python_version_classifiers)
-        common_classifiers.extend([
-            'Topic :: Database',
-            'Topic :: Software Development',
-            'Topic :: Software Development :: Code Generators',
-            'Topic :: Software Development :: Libraries :: Application Frameworks',
-            'Topic :: Software Development :: User Interfaces',
-            'Topic :: Software Development :: Widget Sets'])
-        setup_kwargs['classifiers'] = common_classifiers
+        self.setup_kwargs['ext_modules'] = ext_modules
 
         package_name = self.package_name()
 
         if self.internal_build_type == self.shiboken_module_option_name:
-            setup_kwargs['name'] = self.shiboken_module_st_name
-            setup_kwargs['description'] = "Python / C++ bindings helper module"
-            setup_kwargs['entry_points'] = {}
+            self.setup_kwargs['name'] = self.shiboken_module_st_name
+            self.setup_kwargs['description'] = "Python / C++ bindings helper module"
+            self.setup_kwargs['entry_points'] = {}
 
         elif self.internal_build_type == self.shiboken_generator_option_name:
-            setup_kwargs['name'] = self.shiboken_generator_st_name
-            setup_kwargs['description'] = "Python / C++ bindings generator"
-            setup_kwargs['install_requires'] = [
+            self.setup_kwargs['name'] = self.shiboken_generator_st_name
+            self.setup_kwargs['description'] = "Python / C++ bindings generator"
+            self.setup_kwargs['install_requires'] = [
                 f"{self.shiboken_module_st_name}=={package_version}"
             ]
-            setup_kwargs['entry_points'] = {
+            self.setup_kwargs['entry_points'] = {
                 'console_scripts': [
                     f'{SHIBOKEN} = {package_name}.scripts.shiboken_tool:main',
                     f'{SHIBOKEN}-genpyi = {package_name}.scripts.shiboken_tool:genpyi',
@@ -195,14 +177,15 @@ class Config(object):
             }
 
         elif self.internal_build_type == self.pyside_option_name:
-            setup_kwargs['name'] = self.pyside_st_name
-            setup_kwargs['description'] = ("Python bindings for the Qt cross-platform application "
-                                           "and UI framework")
-            setup_kwargs['install_requires'] = [
+            self.setup_kwargs['name'] = self.pyside_st_name
+            self.setup_kwargs['description'] = (
+                "Python bindings for the Qt cross-platform application and UI framework"
+            )
+            self.setup_kwargs['install_requires'] = [
                 f"{self.shiboken_module_st_name}=={package_version}"
             ]
-            if qt_install_path:
-                _pyside_tools = available_pyside_tools(qt_tools_path=qt_install_path)
+            if qt_install_dir:
+                _pyside_tools = available_pyside_tools(qt_tools_path=Path(qt_install_dir))
 
                 # replacing pyside6-android_deploy by pyside6-android-deploy for consistency
                 # Also, the tool should not exist in any other platform than Linux and macOS
@@ -215,9 +198,7 @@ class Config(object):
                 _console_scripts.extend([f'{PYSIDE}-{tool} = {package_name}.scripts.pyside_tool:'
                                          f'{tool}' for tool in _pyside_tools])
 
-                setup_kwargs['entry_points'] = {'console_scripts': _console_scripts}
-
-        self.setup_kwargs = setup_kwargs
+                self.setup_kwargs['entry_points'] = {'console_scripts': _console_scripts}
 
     def get_long_description(self):
         readme_filename = 'README.md'
@@ -230,31 +211,23 @@ class Config(object):
         elif self.is_internal_pyside_build():
             readme_filename = f'README.{PYSIDE}.md'
 
-        content = ''
-        changes = ''
-        try:
-            with open(self.setup_script_dir / readme_filename) as f:
-                readme = f.read()
-        except Exception as e:
-            log.error(f"Couldn't read contents of {readme_filename}. {e}")
-            raise
+        with open(Path(self.setup_script_dir) / readme_filename) as f:
+            readme = f.read()
 
         # Don't include CHANGES.rst for now, because we have not decided
         # how to handle change files yet.
         include_changes = False
         if include_changes:
             try:
-                with open(self.setup_script_dir / changes_filename) as f:
+                changes = ''
+                with open(Path(self.setup_script_dir) / changes_filename) as f:
                     changes = f.read()
             except Exception as e:
                 log.error(f"Couldn't read contents of {changes_filename}. {e}")
                 raise
-        content += readme
+            return f"{readme}\n\n{changes}"
 
-        if changes:
-            content += f"\n\n{changes}"
-
-        return content
+        return readme
 
     def package_name(self):
         """

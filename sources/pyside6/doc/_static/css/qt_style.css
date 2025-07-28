@@ -119,3 +119,64 @@ article[role="main"] section[id^="pyside6-"] dl dt span.pre {
     padding: 5px;
     border-radius: 5px;
 }
+
+section#examples .sd-card {
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+
+section#examples .sd-card-title {
+  font-size: 1.25em;
+  font-weight: bold;
+}
+
+section#examples .sd-card-body{
+  font-size: 1em;
+}
+
+/* Example card hover */
+section#examples .cover-img img:hover {
+    background-color: var(--color-background);
+    opacity: 0.3;
+}
+
+section#examples .sd-card {
+    z-index: 1;
+    position: relative;
+}
+
+section#examples .sd-card-hover:hover {
+    background-color: var(--color-background);
+    transform: translateY(-5px);
+    box-shadow: 0 4px 8px rgba(27, 31, 35, 0.12), 0 12px 48px rgba(27, 31, 35, 0.24);
+}
+
+section#examples .sd-card-hover:hover .sd-card-footer {
+    bottom: 0;
+    display: block;
+    left: 0;
+    position: absolute;
+    color: var(--color-background-font);
+    right: 0;
+    top: 0;
+    padding: 20px;
+    opacity: 1;
+    z-index: 5;
+    background-color: var(--color-background);
+}
+
+section#examples .sd-card-hover:hover a {
+    z-index: 7;
+}
+
+section#examples details .sd-card .sd-card-footer {
+    display: none;
+}
+
+section#examples details .sd-card-body p strong {
+    display: block;
+    font-size: 1.5em;
+}
+
+section#examples details .sd-card-title {
+    font-size: 1.1em;
+}

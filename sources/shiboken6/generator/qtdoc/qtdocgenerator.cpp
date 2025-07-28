@@ -59,6 +59,7 @@ struct DocClassEntry
     QString name;
     QString fullName;
     QString file;
+    bool nested = false;
 };
 
 static bool classEntryLessThan(const DocClassEntry &e1, const DocClassEntry &e2)
@@ -255,7 +256,7 @@ static void readExtraDoc(const QFileInfo &fi,
         auto dot = name.lastIndexOf(u'.');
         if (dot != -1)
             name.remove(0, dot + 1);
-        docPackage->classPages.append({name, fullClassName, newFileName});
+        docPackage->classPages.append({name, fullClassName, newFileName, false});
     }
     extraTocEntries->append(fileNameToTocEntry(newFileName));
 }
@@ -377,11 +378,11 @@ void QtDocGenerator::writeFormattedDetailedText(TextStream &s, const Documentati
 }
 
 void QtDocGenerator::writeFormattedText(TextStream &s, const QString &doc,
-                                        Documentation::Format format,
+                                        DocumentationFormat format,
                                         const QString &scope,
                                         QtXmlToSphinxImages *images) const
 {
-    if (format == Documentation::Native) {
+    if (format == DocumentationFormat::Native) {
         QtXmlToSphinx x(this, m_options.parameters, doc, scope);
         s << x;
         images->append(x.images());
@@ -468,8 +469,9 @@ void QtDocGenerator::generateClassRecursion(TextStream &s, const QString &target
 
     qCDebug(lcShibokenDoc, "Generating Documentation for %s", qPrintable(metaClass->fullName()));
 
+    const bool nested = metaClass->enclosingClass() != nullptr;
     m_packages[metaClass->package()].classPages.append({metaClass->name(), metaClass->fullName(),
-                                                        fileNameForContext(classContext)});
+                                                        fileNameForContext(classContext), nested});
 
     doGenerateClass(s, targetDir, metaClass);
 
@@ -495,7 +497,6 @@ void QtDocGenerator::doGenerateClass(TextStream &s, const QString &targetDir,
 {
     qCDebug(lcShibokenDoc).noquote().nospace() << "Generating Documentation for " << metaClass->fullName();
 
-    m_docParser->setPackageName(metaClass->package());
     const QString sourceFile =
         m_docParser->fillDocumentation(std::const_pointer_cast<AbstractMetaClass>(metaClass));
 
@@ -615,7 +616,7 @@ void QtDocGenerator::writeProperties(TextStream &s,
         s <<  ".. py:property:: " << propertyRefTarget(prop.name)
             << "\n   :type: " << type << "\n\n\n";
         if (!prop.documentation.isEmpty()) {
-            writeFormattedText(s, prop.documentation.detailed(), Documentation::Native,
+            writeFormattedText(s, prop.documentation.detailed(), DocumentationFormat::Native,
                                scope, images);
         }
         s << "**Access functions:**\n";
@@ -762,6 +763,17 @@ void QtDocGenerator::writeDocSnips(TextStream &s,
     }
 }
 
+void QtDocGenerator::writeFormattedText(TextStream &s, const DocModification &mod,
+                                        const QString &scope, QtXmlToSphinxImages *images) const
+{
+    const bool note = mod.emphasis() == DocumentationEmphasis::LanguageNote;
+    if (note)
+        s << ".. admonition:: Python Language Note\n\n" << indent;
+    writeFormattedText(s, mod.code(), mod.format(), scope, images);
+    if (note)
+        s << outdent;
+}
+
 bool QtDocGenerator::writeDocModifications(TextStream &s,
                                            const DocModificationList &mods,
                                            TypeSystem::DocModificationMode mode,
@@ -771,18 +783,8 @@ bool QtDocGenerator::writeDocModifications(TextStream &s,
     bool didSomething = false;
     for (const DocModification &mod : mods) {
         if (mod.mode() == mode) {
-            switch (mod.format()) {
-            case TypeSystem::NativeCode:
-                writeFormattedText(s, mod.code(), Documentation::Native, scope, images);
-                didSomething = true;
-                break;
-            case TypeSystem::TargetLangCode:
-                writeFormattedText(s, mod.code(), Documentation::Target, scope, images);
-                didSomething = true;
-                break;
-            default:
-                break;
-            }
+            writeFormattedText(s, mod, scope, images);
+            didSomething = true;
         }
     }
     return didSomething;
@@ -1242,6 +1244,10 @@ void QtDocGenerator::writeModuleDocumentation()
         QtXmlToSphinxImages parsedImages;
         TextStream& s = output.stream;
 
+        TypeSystemTypeEntryCPtr typeSystemEntry = typeDb->findTypeSystemType(it.key());
+        Q_ASSERT(typeSystemEntry);
+        const auto docMode = typeSystemEntry->docMode();
+
         const QString &title = it.key();
         s << ".. module:: " << title << "\n\n" << headline(title, '*');
 
@@ -1281,8 +1287,10 @@ void QtDocGenerator::writeModuleDocumentation()
             << ":maxdepth: 1\n\n";
         if (hasGlobals)
             s << globalsPage << '\n';
-        for (const auto &e : std::as_const(docPackage.classPages))
-            s << e.file << '\n';
+        for (const auto &e : std::as_const(docPackage.classPages)) {
+            if (!e.nested || docMode == TypeSystem::DocMode::Flat)
+                s << e.file << '\n';
+        }
         s << "\n\n" << outdent << outdent << headline("Detailed Description");
 
         // module doc is always wrong and C++istic, so go straight to the extra directory!
@@ -1293,7 +1301,9 @@ void QtDocGenerator::writeModuleDocumentation()
         // Get the WebXML source file for image resolution if we
         // are re-using images from it in our .rst.
         QtXmlToSphinx::stripPythonQualifiers(&context);
-        const Documentation webXmlModuleDoc = m_docParser->retrieveModuleDocumentation(it.key());
+        const ModuleDocumentation moduleDocumentation =
+            m_docParser->retrieveModuleDocumentation(it.key());
+        const Documentation &webXmlModuleDoc = moduleDocumentation.documentation;
         if (webXmlModuleDoc.hasSourceFile())
             sourceFileNames.append(webXmlModuleDoc.sourceFile());
         if (QFileInfo::exists(moduleDocRstFileName)) {
@@ -1307,7 +1317,7 @@ void QtDocGenerator::writeModuleDocumentation()
                 sourceFileNames.append(moduleDocRstFileName);
         } else if (!webXmlModuleDoc.isEmpty()) {
             // try the normal way
-            if (webXmlModuleDoc.format() == Documentation::Native) {
+            if (webXmlModuleDoc.format() == DocumentationFormat::Native) {
                 QtXmlToSphinx x(this, m_options.parameters, webXmlModuleDoc.detailed(), context);
                 s << x;
                 parsedImages += x.images();
@@ -1316,10 +1326,13 @@ void QtDocGenerator::writeModuleDocumentation()
             }
         }
 
-        TypeSystemTypeEntryCPtr typeSystemEntry = typeDb->findTypeSystemType(it.key());
-        Q_ASSERT(typeSystemEntry);
-        writeFancyToc(s, "List of Classes", classEntryListToToc(docPackage.classPages,
-                                                                typeSystemEntry->docMode()),
+        if (!moduleDocumentation.qmlTypesUrl.isEmpty()) {
+            s << '\n' << headline("List of QML types")
+              << "\n    * `" << moduleName<< " QML Types <"
+              << moduleDocumentation.qmlTypesUrl << ">`_\n\n";
+        }
+
+        writeFancyToc(s, "List of Classes", classEntryListToToc(docPackage.classPages, docMode),
                       "class"_L1);
         writeFancyToc(s, "List of Decorators", fileListToToc(docPackage.decoratorPages),
                       "deco"_L1);
@@ -1380,6 +1393,27 @@ static inline QString msgNonExistentAdditionalDocFile(const QString &dir,
     return result;
 }
 
+// Return rst target document name for additional docs
+// "qtcore/webxml/animation.webxml" -> "qtcore-animation.rst"
+static QString additionalDocRstFileName(const QFileInfo &fi, const QString &rstSuffix)
+{
+    QString result = fi.baseName() + rstSuffix;
+    // Disambiguate file name by directory
+    const QString dirName = fi.absolutePath();
+    QStringView prefix{dirName};
+    if (prefix.endsWith("/webxml"_L1))
+        prefix = prefix.chopped(7);
+    auto lastSlash = prefix.lastIndexOf(u'/');
+    if (lastSlash != -1) {
+        prefix = prefix.sliced(lastSlash + 1);
+        if (!result.startsWith(prefix)) {
+            result.prepend(u'-');
+            result.prepend(prefix);
+        }
+    }
+    return result;
+}
+
 void QtDocGenerator::writeAdditionalDocumentation() const
 {
     QFile additionalDocumentationFile(m_options.additionalDocumentationList);
@@ -1418,7 +1452,7 @@ void QtDocGenerator::writeAdditionalDocumentation() const
             // Normal file entry
             QFileInfo fi(m_options.parameters.docDataDir + u'/' + line);
             if (fi.isFile()) {
-                const QString rstFileName = fi.baseName() + rstSuffix;
+                const QString rstFileName = additionalDocRstFileName(fi, rstSuffix);
                 const QString rstFile = targetDir + u'/' + rstFileName;
                 const QString context = targetDir.mid(targetDir.lastIndexOf(u'/') + 1);
                 if (convertToRst(fi.absoluteFilePath(),
@@ -1467,7 +1501,6 @@ bool QtDocGenerator::doSetup()
     }
 
     m_docParser->setDocumentationDataDirectory(m_options.parameters.docDataDir);
-    m_docParser->setLibrarySourceDirectory(m_options.parameters.libSourceDir);
     m_options.parameters.outputDirectory = outputDirectory();
     return true;
 }
@@ -1763,7 +1796,7 @@ static QString imageRelativeTargetDirFromContext(const QString &scope,
 ResolvedDocImage
 QtDocGenerator::resolveImage(const QtXmlToSphinxImage &image,
                              const QStringList &sourceDirs,
-                             const QString &targetDir) const
+                             const QString &targetDir)
 {
     QString hrefBase;
     QString hrefName = image.href; // split "images/a.png"
@@ -1843,7 +1876,7 @@ static void copyParsedImage(const ResolvedDocImage &image, QDir &targetDir)
 // Copy parsed images from WebXML to doc/base
 void QtDocGenerator::copyParsedImages(const QtXmlToSphinxImages &images,
                                       const QStringList &sourceDocumentFiles,
-                                      const QString &targetDocumentDir) const
+                                      const QString &targetDocumentDir)
 {
     if (images.isEmpty())
         return;

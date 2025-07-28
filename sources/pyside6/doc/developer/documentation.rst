@@ -32,12 +32,17 @@ specific information like build instructions should be removed.
 The descriptions may link to tutorials which can be added to additionaldocs.lst
 for webxml extraction.
 
+.. _maintaining-additionaldocs:
+
 Maintaining additionaldocs.lst
 ------------------------------
 
 The file is a list of additional documentation files. These are basically Qt
-tutorials referenced by the documentation. They will receive some Python
-adaption by shiboken/sphinx.
+tutorials referenced by the documentation, for example "Additional Frameworks"
+sections of module files. They will receive some Python adaption by
+shiboken/sphinx.
+
+A line in brackets denotes the output directory.
 
 The list can be created by the below script and some hand-editing. It will find
 almost all documents. Quite a number of them might be unreferenced, but there
@@ -48,15 +53,22 @@ Pages of examples that exist in Python should be removed.
 
     for F in *.webxml
     do
-        echo "$F" | egrep '(-index)|(-module)|(-qmlmodule)\.webxml$' > /dev/null
+        echo "$F" | egrep '(-index|example|cmake|private-module|-changes-qt6|-module.web|-qmlmodule.web)' > /dev/null
         if [ $? -ne 0 ]
         then
             if fgrep '<para>' "$F" > /dev/null # Exclude reference only
             then
-                egrep "(<class )|(<namespace )" $F > /dev/null || echo $F
+                egrep "(<namespace|<class|<struct|<group|<union)" $F > /dev/null || echo $F
             fi
         fi
     done
+
+The overviews go into a directory named ``overviews``. There are also special
+pages containing lists of classes with brief, grouped by function. They mostly
+have a ``<group name="...">`` WebXML element, but may also be hand-written.
+They should be referenced from the module page in a section named `List of
+Classes by Function`. For clarity, the files with a ``<group>`` element are
+placed into a separate directory ``groups``.
 
 Inheritance graphs
 ------------------

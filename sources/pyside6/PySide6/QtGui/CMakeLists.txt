@@ -193,6 +193,7 @@ ${QtGui_GEN_DIR}/qpainterpath_wrapper.cpp
 ${QtGui_GEN_DIR}/qpainterpathstroker_wrapper.cpp
 ${QtGui_GEN_DIR}/qpaintevent_wrapper.cpp
 ${QtGui_GEN_DIR}/qpalette_wrapper.cpp
+${QtGui_GEN_DIR}/qpdfoutputintent_wrapper.cpp
 ${QtGui_GEN_DIR}/qpdfwriter_wrapper.cpp
 ${QtGui_GEN_DIR}/qpen_wrapper.cpp
 ${QtGui_GEN_DIR}/qpicture_wrapper.cpp
@@ -355,4 +356,3 @@ create_pyside_module(NAME QtGui
 install(FILES ${pyside6_SOURCE_DIR}/qpytextobject.h
               ${pyside6_SOURCE_DIR}/qtguihelper.h
         DESTINATION include/PySide6/QtGui/)
-

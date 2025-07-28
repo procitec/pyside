@@ -38,7 +38,7 @@ class ButTest(UsesQApplication):
         loader = MyQUiLoader(w)
 
         filePath = os.path.join(os.path.dirname(__file__), 'minimal.ui')
-        ui = loader.load(filePath)
+        ui = loader.load(filePath)  # noqa: F841
 
         self.assertEqual(len(loader._widgets), 1)
         self.assertEqual(type(loader._widgets[0]), QFrame)
@@ -46,4 +46,3 @@ class ButTest(UsesQApplication):
 
 if __name__ == '__main__':
     unittest.main()
-

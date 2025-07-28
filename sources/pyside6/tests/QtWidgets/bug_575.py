@@ -5,7 +5,6 @@ from __future__ import annotations
 """ Unittest for bug #575 """
 """ http://bugs.openbossa.org/show_bug.cgi?id=575 """
 
-import sys
 import os
 import sys
 import unittest
@@ -20,7 +19,7 @@ from PySide6.QtWidgets import QApplication, QPlainTextEdit, QTextEdit
 
 class Bug575(unittest.TestCase):
     def testPropertyValues(self):
-        app = QApplication(sys.argv)
+        app = QApplication(sys.argv)  # noqa: F841
         textEdit = QPlainTextEdit()
         textEdit.insertPlainText("PySide INdT")
         selection = QTextEdit.ExtraSelection()
@@ -31,4 +30,3 @@ class Bug575(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
-

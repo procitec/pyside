@@ -18,7 +18,7 @@ from sample import (CustomOverloadSequence, ImplicitBase, ImplicitConv,
                     ImplicitTarget, SortedOverload)
 
 
-class Dummy(object):
+class Dummy:
     pass
 
 
@@ -70,8 +70,8 @@ class DeepOverloadSorting(unittest.TestCase):
 
 class EnumOverIntSorting(unittest.TestCase):
     def testEnumOverInt(self):
-        ic = ImplicitConv(ImplicitConv.CtorTwo)
-        self.assertEqual(ic.ctorEnum(), ImplicitConv.CtorTwo)
+        ic = ImplicitConv(ImplicitConv.CtorEnum.CtorTwo)
+        self.assertEqual(ic.ctorEnum(), ImplicitConv.CtorEnum.CtorTwo)
 
 
 class TestCustomOverloadSequence(unittest.TestCase):

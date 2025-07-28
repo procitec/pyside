@@ -268,7 +268,7 @@
         <inject-code class="native" position="beginning" file="../glue/qtnetwork.cpp"
                      snippet="qhostinfo-lookuphost-functor"/>
         <enum-type name="HostInfoError"/>
-        <add-function signature="lookupHost(const QString &amp;,PyCallable)">
+        <add-function signature="lookupHost(const QString &amp;@name@,PyCallable@callable@)">
             <inject-code class="target" position="beginning"
                          file="../glue/qtnetwork.cpp"
                          snippet="qhostinfo-lookuphost-callable"/>
@@ -297,7 +297,7 @@
     </value-type>
 
     <value-type name="QIPv6Address">
-        <add-function signature="__len__">
+        <add-function signature="__len__" return-type="int">
             <inject-code class="target" position="beginning" file="../glue/qtnetwork.cpp" snippet="qipv6address-len"/>
         </add-function>
         <add-function signature="__getitem__">
@@ -526,4 +526,3 @@
 
     <!-- The above entries may be present in the system or not. Keep this section organized. -->
 </typesystem>
-

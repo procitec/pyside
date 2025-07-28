@@ -14,7 +14,7 @@ sys.path.append(os.fspath(Path(__file__).resolve().parents[1]))
 from init_paths import init_test_paths
 init_test_paths(False)
 
-from PySide6.QtCore import QUrl, QObject, SIGNAL, QCoreApplication, QTimer
+from PySide6.QtCore import QCoreApplication
 from PySide6.QtNetwork import QUdpSocket, QHostAddress
 
 
@@ -32,7 +32,7 @@ class HttpSignalsCase(unittest.TestCase):
         self.socket = QUdpSocket()
 
         self.server = QUdpSocket()
-        self.server.bind(QHostAddress(QHostAddress.LocalHost), 45454)
+        self.server.bind(QHostAddress(QHostAddress.SpecialAddress.LocalHost), 45454)
 
     def tearDown(self):
         # Release resources
@@ -43,7 +43,7 @@ class HttpSignalsCase(unittest.TestCase):
         gc.collect()
 
     def sendPackage(self):
-        addr = QHostAddress(QHostAddress.LocalHost)
+        addr = QHostAddress(QHostAddress.SpecialAddress.LocalHost)
         self.socket.writeDatagram(bytes('datagram', "UTF-8"), addr, 45454)
 
     def callback(self):

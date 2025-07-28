@@ -28,6 +28,9 @@
 #include <QtCore/QHash>
 #include <QtCore/QUrl>
 
+#include <algorithm>
+#include <iterator>
+
 using namespace Qt::StringLiterals;
 
 enum { debugFunctionSearch = 0 };
@@ -35,11 +38,6 @@ enum { debugFunctionSearch = 0 };
 constexpr auto briefStartElement = "<brief>"_L1;
 constexpr auto briefEndElement = "</brief>"_L1;
 constexpr auto webxmlSuffix = ".webxml"_L1;
-
-Documentation QtDocParser::retrieveModuleDocumentation()
-{
-    return retrieveModuleDocumentation(packageName());
-}
 
 // Return the package of a type "PySide6.QtGui.QPainter" -> "PySide6.QtGui"
 static QStringView packageFromPythonType(QStringView pythonType)
@@ -86,13 +84,11 @@ QString QtDocParser::qdocModuleDir(const QString &pythonType)
     return it.value();
 }
 
-static QString xmlFileNameRoot(const AbstractMetaClassPtr &metaClass)
+static QString xmlFileBaseName(const AbstractMetaClassPtr &metaClass)
 {
     QString className = metaClass->qualifiedCppName().toLower();
     className.replace("::"_L1, "-"_L1);
-
-    return QtDocParser::qdocModuleDir(metaClass->typeEntry()->targetLangPackage())
-           + u'/' + className;
+    return className;
 }
 
 static void formatPreQualifications(QTextStream &str, const AbstractMetaType &type)
@@ -161,28 +157,33 @@ static QString formatFunctionArgTypeQuery(const AbstractMetaType &metaType)
     return result;
 }
 
-QString QtDocParser::functionDocumentation(const QString &sourceFileName,
-                                           const ClassDocumentation &classDocumentation,
-                                           const AbstractMetaClassCPtr &metaClass,
-                                           const AbstractMetaFunctionCPtr &func,
-                                           QString *errorMessage)
+QtDocParser::FunctionDocumentationOpt
+    QtDocParser::functionDocumentation(const QString &sourceFileName,
+                                       const ClassDocumentation &classDocumentation,
+                                       const AbstractMetaClassCPtr &metaClass,
+                                       const AbstractMetaFunctionCPtr &func, QString *errorMessage)
 {
     errorMessage->clear();
 
-    const QString docString =
-        queryFunctionDocumentation(sourceFileName, classDocumentation, metaClass,
-                                   func, errorMessage);
+    FunctionDocumentationOpt orig = queryFunctionDocumentation(sourceFileName, classDocumentation, metaClass,
+                                                               func, errorMessage);
+    if (!orig.has_value() || orig.value().description.isEmpty())
+        return orig;
 
     const auto funcModifs = DocParser::getXpathDocModifications(func, metaClass);
-    return docString.isEmpty() || funcModifs.isEmpty()
-        ? docString : applyDocModifications(funcModifs, docString);
+    if (funcModifs.isEmpty())
+        return orig;
+
+    FunctionDocumentation modified = orig.value();
+    modified.description = applyDocModifications(funcModifs, orig->description);
+    return modified;
 }
 
-QString QtDocParser::queryFunctionDocumentation(const QString &sourceFileName,
-                                                const ClassDocumentation &classDocumentation,
-                                                const AbstractMetaClassCPtr &metaClass,
-                                                const AbstractMetaFunctionCPtr &func,
-                                                QString *errorMessage)
+QtDocParser::FunctionDocumentationOpt
+    QtDocParser::queryFunctionDocumentation(const QString &sourceFileName,
+                                            const ClassDocumentation &classDocumentation,
+                                            const AbstractMetaClassCPtr &metaClass,
+                                            const AbstractMetaFunctionCPtr &func, QString *errorMessage)
 {
     // Search candidates by name and const-ness
     FunctionDocumentationList candidates =
@@ -190,7 +191,7 @@ QString QtDocParser::queryFunctionDocumentation(const QString &sourceFileName,
     if (candidates.isEmpty()) {
         *errorMessage = msgCannotFindDocumentation(sourceFileName, func.get())
                         + u" (no matches)"_s;
-        return {};
+        return std::nullopt;
     }
 
     // Try an exact query
@@ -223,7 +224,7 @@ QString QtDocParser::queryFunctionDocumentation(const QString &sourceFileName,
     }
 
     if (index != -1)
-        return candidates.at(index).description;
+        return candidates.at(index);
 
     // Fallback: Try matching by argument count
     const auto parameterCount = func->arguments().size();
@@ -236,12 +237,12 @@ QString QtDocParser::queryFunctionDocumentation(const QString &sourceFileName,
         QTextStream(errorMessage) << msgFallbackForDocumentation(sourceFileName, func.get())
             << "\n  Falling back to \"" << match.signature
             << "\" obtained by matching the argument count only.";
-        return candidates.constFirst().description;
+        return candidates.constFirst();
     }
 
     QTextStream(errorMessage) << msgCannotFindDocumentation(sourceFileName, func.get())
         << " (" << candidates.size() << " candidates matching the argument count)";
-    return {};
+    return std::nullopt;
 }
 
 // Extract the <brief> section from a WebXML (class) documentation and remove it
@@ -261,6 +262,23 @@ static QString extractBrief(QString *value)
                       u"<rst> More_...</rst>"_s);
     value->remove(briefStart, briefLength);
     return briefValue;
+}
+
+// Apply the documentation parsed from WebXML to a AbstractMetaFunction and complete argument
+// names missing from parsed headers using the WebXML names (exact match only).
+static void applyDocumentation(const FunctionDocumentation &funcDoc,
+                               const QString &sourceFileName,
+                               const AbstractMetaFunctionPtr &func)
+{
+    const Documentation documentation(funcDoc.description, {}, sourceFileName);
+    func->setDocumentation(documentation);
+
+    if (const auto argCount = func->arguments().size(); argCount == funcDoc.parameterNames.size()) {
+        for (qsizetype a = 0; a < argCount; ++a) {
+            if (!func->arguments().at(a).hasName() && !funcDoc.parameterNames.at(a).isEmpty())
+                func->setArgumentName(a, funcDoc.parameterNames.at(a));
+        }
+    }
 }
 
 // Find the webxml file for global functions/enums
@@ -302,18 +320,18 @@ void  QtDocParser::fillGlobalFunctionDocumentation(const AbstractMetaFunctionPtr
         return;
 
     QString errorMessage;
-    auto classDocumentationO = parseWebXml(sourceFileName, &errorMessage);
+    auto classDocumentationO = parseWebXml({sourceFileName}, &errorMessage);
     if (!classDocumentationO.has_value()) {
         qCWarning(lcShibokenDoc, "%s", qPrintable(errorMessage));
         return;
     }
-    const QString detailed =
-        functionDocumentation(sourceFileName, classDocumentationO.value(),
-                              {}, f, &errorMessage);
-    if (!errorMessage.isEmpty())
+
+    const auto funcDocOpt = functionDocumentation(sourceFileName, classDocumentationO.value(),
+                                                  {}, f, &errorMessage);
+    if (funcDocOpt.has_value())
+        applyDocumentation(funcDocOpt.value(), sourceFileName, f);
+    else if (!errorMessage.isEmpty())
         qCWarning(lcShibokenDoc, "%s", qPrintable(errorMessage));
-    Documentation documentation(detailed, {}, sourceFileName);
-    f->setDocumentation(documentation);
 }
 
 void QtDocParser::fillGlobalEnumDocumentation(AbstractMetaEnum &e)
@@ -325,7 +343,7 @@ void QtDocParser::fillGlobalEnumDocumentation(AbstractMetaEnum &e)
         return;
 
     QString errorMessage;
-    auto classDocumentationO = parseWebXml(sourceFileName, &errorMessage);
+    auto classDocumentationO = parseWebXml({sourceFileName}, &errorMessage);
     if (!classDocumentationO.has_value()) {
         qCWarning(lcShibokenDoc, "%s", qPrintable(errorMessage));
         return;
@@ -348,28 +366,35 @@ QString QtDocParser::fillDocumentation(const AbstractMetaClassPtr &metaClass)
         context = context->enclosingClass();
     }
 
-    QString sourceFileRoot = documentationDataDirectory() + u'/' + xmlFileNameRoot(metaClass);
+    // Find qdoc files of a class.
+    QStringList allCandidates;
+    const auto typeEntry = metaClass->typeEntry();
+    const QString docDir = documentationDataDirectory() + u'/'
+                           + QtDocParser::qdocModuleDir(typeEntry->targetLangPackage()) + u'/';
+    const QString baseName = xmlFileBaseName(metaClass);
+    allCandidates.append(docDir + baseName + webxmlSuffix);
+    const QString &docFile = typeEntry->docFile();
+    if (!docFile.isEmpty())
+        allCandidates.append(docDir + docFile + webxmlSuffix);
+    allCandidates.append(docDir + baseName + ".xml"_L1);
+    QStringList candidates;
+    std::copy_if(allCandidates.cbegin(), allCandidates.cend(), std::back_inserter(candidates),
+                 qOverload<const QString &>(QFileInfo::exists));
 
-    QFileInfo sourceFile(sourceFileRoot + webxmlSuffix);
-    if (!sourceFile.exists())
-        sourceFile.setFile(sourceFileRoot + ".xml"_L1);
-   if (!sourceFile.exists()) {
-        qCWarning(lcShibokenDoc).noquote().nospace()
-            << "Can't find qdoc file for class " << metaClass->name() << ", tried: "
-            << QDir::toNativeSeparators(sourceFile.absoluteFilePath());
+   if (candidates.isEmpty()) {
+       qCWarning(lcShibokenDoc, "%s", qPrintable(msgCannotFindQDocFile(metaClass, allCandidates)));
        return {};
     }
 
-    const QString sourceFileName = sourceFile.absoluteFilePath();
     QString errorMessage;
-
-    const auto classDocumentationO = parseWebXml(sourceFileName, &errorMessage);
+    const auto classDocumentationO = parseWebXml(candidates, &errorMessage);
     if (!classDocumentationO.has_value()) {
         qCWarning(lcShibokenDoc, "%s", qPrintable(errorMessage));
         return {};
     }
 
     const auto &classDocumentation = classDocumentationO.value();
+    const QString &sourceFileName = candidates.constFirst();
     for (const auto &p : classDocumentation.properties) {
         Documentation doc(p.description, p.brief, sourceFileName);
         metaClass->setPropertyDocumentation(p.name, doc);
@@ -388,20 +413,21 @@ QString QtDocParser::fillDocumentation(const AbstractMetaClassPtr &metaClass)
     Documentation doc;
     doc.setSourceFile(sourceFileName);
     if (!brief.isEmpty())
-        doc.setValue(brief, Documentation::Brief);
+        doc.setValue(brief, DocumentationType::Brief);
     doc.setValue(docString);
     metaClass->setDocumentation(doc);
 
     //Functions Documentation
     const auto &funcs = DocParser::documentableFunctions(metaClass);
     for (const auto &func : funcs) {
-        const QString detailed =
-            functionDocumentation(sourceFileName, classDocumentation,
-                                  metaClass, func, &errorMessage);
-        if (!errorMessage.isEmpty())
+        const auto funcDocOpt = functionDocumentation(sourceFileName, classDocumentation,
+                                                      metaClass, func, &errorMessage);
+        if (funcDocOpt.has_value()) {
+            applyDocumentation(funcDocOpt.value(), sourceFileName,
+                               std::const_pointer_cast<AbstractMetaFunction>(func));
+        } else if (!errorMessage.isEmpty()) {
             qCWarning(lcShibokenDoc, "%s", qPrintable(errorMessage));
-        const Documentation documentation(detailed, {}, sourceFileName);
-        std::const_pointer_cast<AbstractMetaFunction>(func)->setDocumentation(documentation);
+        }
     }
 #if 0
     // Fields
@@ -443,6 +469,10 @@ bool QtDocParser::extractEnumDocumentation(const ClassDocumentation &classDocume
             doc.insert(firstPara + 6, note);
         }
     }
+    // Fully qualify enums: "<term>QFrame::NoFrame" -> "<term>QFrame::FrameShape::NoFrame"
+    const QString classQualifier = "<term>"_L1 + classDocumentation.name + "::"_L1;
+    doc.replace(classQualifier, classQualifier + meta_enum.name() + "::"_L1);
+    doc.replace("::None</term>"_L1, "::None\\_</term>"_L1);
     Documentation enumDoc(doc, {}, sourceFileName);
     meta_enum.setDocumentation(enumDoc);
     return true;
@@ -450,15 +480,11 @@ bool QtDocParser::extractEnumDocumentation(const ClassDocumentation &classDocume
 
 static QString qmlReferenceLink(const QFileInfo &qmlModuleFi)
 {
-    QString result;
-    QTextStream(&result) << "<para>The module also provides <link"
-        << R"( type="page" page="https://doc.qt.io/qt-)" << QT_VERSION_MAJOR
-        << '/' << qmlModuleFi.baseName() << R"(.html")"
-        << ">QML types</link>.</para>";
-    return result;
+    return "https://doc.qt.io/qt-"_L1 + QString::number(QT_VERSION_MAJOR)
+        + u'/' + qmlModuleFi.baseName() + ".html"_L1;
 }
 
-Documentation QtDocParser::retrieveModuleDocumentation(const QString& name)
+ModuleDocumentation QtDocParser::retrieveModuleDocumentation(const QString &name)
 {
     // TODO: This method of acquiring the module name supposes that the target language uses
     // dots as module separators in package names. Improve this.
@@ -468,9 +494,8 @@ Documentation QtDocParser::retrieveModuleDocumentation(const QString& name)
     const QString moduleName = completeModuleName.sliced(name.lastIndexOf(u'.') + 1);
     const QString lowerModuleName = moduleName.toLower();
 
-    const QString prefix = documentationDataDirectory() + u'/'
-                           + qdocModuleDir(completeModuleName) + u'/' + lowerModuleName;
-    const QString sourceFile = prefix + "-index.webxml"_L1;
+    const QString dirPath = documentationDataDirectory() + u'/' + qdocModuleDir(completeModuleName);
+    const QString sourceFile = dirPath + u'/' + lowerModuleName + "-index.webxml"_L1;
     if (!QFile::exists(sourceFile)) {
         qCWarning(lcShibokenDoc).noquote().nospace()
             << "Can't find qdoc file for module " <<  name << ", tried: "
@@ -484,24 +509,20 @@ Documentation QtDocParser::retrieveModuleDocumentation(const QString& name)
         qCWarning(lcShibokenDoc, "%s", qPrintable(errorMessage));
         return {};
     }
-
-    Documentation doc(docString, {}, sourceFile);
-    if (doc.isEmpty()) {
+    if (docString.isEmpty()) {
         qCWarning(lcShibokenDoc, "%s",
                   qPrintable(msgCannotFindDocumentation(sourceFile, "module", name)));
-        return doc;
+        return {};
     }
+
+    ModuleDocumentation result{Documentation{docString, {}, sourceFile}, {}};
 
     // If a QML module info file exists, insert a link to the Qt docs.
-    const QFileInfo qmlModuleFi(prefix + "-qmlmodule.webxml"_L1);
-    if (qmlModuleFi.isFile()) {
-        QString docString = doc.detailed();
-        const int pos = docString.lastIndexOf(u"</description>");
-        if (pos != -1) {
-            docString.insert(pos, qmlReferenceLink(qmlModuleFi));
-            doc.setDetailed(docString);
-        }
-    }
-
-    return doc;
+    // Use a filter as some file names are irregular.
+    // Note: These files are empty; we need to point to the web docs.
+    const QFileInfoList qmlModuleFiles =
+        QDir(dirPath).entryInfoList({"*-qmlmodule.webxml"_L1}, QDir::Files);
+    if (!qmlModuleFiles.isEmpty())
+        result.qmlTypesUrl = qmlReferenceLink(qmlModuleFiles.constFirst());
+    return result;
 }

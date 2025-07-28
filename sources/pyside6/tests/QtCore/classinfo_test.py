@@ -2,7 +2,6 @@
 # SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 from __future__ import annotations
 
-import sys
 import os
 import sys
 import unittest
@@ -94,7 +93,7 @@ class TestClassInfo(unittest.TestCase):
             pass
         self.assertRaises(TypeError, make_info(), test_function)
 
-        class NotAQObject(object):
+        class NotAQObject:
             pass
         self.assertRaises(TypeError, make_info(), NotAQObject)
 

@@ -26,8 +26,8 @@ class ListConnectionTest(unittest.TestCase):
         self.assertEqual(TestObjectWithoutNamespace.Enum2.Option4, 4)
 
     def testFlagComparisonOperators(self):  # PYSIDE-1696, compare to self
-        f1 = Qt.AlignHCenter | Qt.AlignBottom
-        f2 = Qt.AlignHCenter | Qt.AlignBottom
+        f1 = Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignBottom
+        f2 = Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignBottom
         self.assertTrue(f1 == f1)
         self.assertTrue(f1 <= f1)
         self.assertTrue(f1 >= f1)
@@ -42,10 +42,10 @@ class ListConnectionTest(unittest.TestCase):
         self.assertFalse(f1 < f2)
         self.assertFalse(f1 > f2)
 
-        self.assertTrue(Qt.AlignHCenter < Qt.AlignBottom)
-        self.assertFalse(Qt.AlignHCenter > Qt.AlignBottom)
-        self.assertFalse(Qt.AlignBottom < Qt.AlignHCenter)
-        self.assertTrue(Qt.AlignBottom > Qt.AlignHCenter)
+        self.assertTrue(Qt.AlignmentFlag.AlignHCenter < Qt.AlignmentFlag.AlignBottom)
+        self.assertFalse(Qt.AlignmentFlag.AlignHCenter > Qt.AlignmentFlag.AlignBottom)
+        self.assertFalse(Qt.AlignmentFlag.AlignBottom < Qt.AlignmentFlag.AlignHCenter)
+        self.assertTrue(Qt.AlignmentFlag.AlignBottom > Qt.AlignmentFlag.AlignHCenter)
 
 
 # PYSIDE-1735: We are testing that opcodes do what they are supposed to do.
@@ -91,15 +91,6 @@ class InvestigateOpcodesTest(unittest.TestCase):
                     ('STORE_FAST',  125, 1),
                     ('LOAD_CONST',  100, 0),
                     ('RETURN_VALUE', 83, None)]
-
-        if sys.version_info[:2] <= (3, 6):
-
-            result_2 = [('LOAD_GLOBAL',   116, 0),
-                        ('LOAD_ATTR',     106, 1),
-                        ('CALL_FUNCTION', 131, 0),
-                        ('STORE_FAST',    125, 1),
-                        ('LOAD_CONST',    100, 0),
-                        ('RETURN_VALUE',   83, None)]
 
         if sys.version_info[:2] == (3, 11):
             # Note: Python 3.11 is a bit more complex because it can optimize itself.

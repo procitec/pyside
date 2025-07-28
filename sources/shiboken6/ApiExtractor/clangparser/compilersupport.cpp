@@ -204,7 +204,7 @@ static HeaderPaths gppInternalIncludePaths(const QString &compiler)
                 }
                 result.append(headerPath);
             }
-        } else if (line.startsWith(QByteArrayLiteral("#include <...> search starts here"))) {
+        } else if (line.startsWith("#include <...> search starts here"_ba)) {
             isIncludeDir = true;
         }
     }
@@ -221,9 +221,7 @@ QByteArrayList detectVulkan()
     static const char *vulkanVariables[] = {"VULKAN_SDK", "VK_SDK_PATH"};
     for (const char *vulkanVariable : vulkanVariables) {
         if (qEnvironmentVariableIsSet(vulkanVariable)) {
-            const auto option = QByteArrayLiteral("-isystem")
-                                + qgetenv(vulkanVariable)
-                                + QByteArrayLiteral("/include");
+            const auto option = "-isystem"_ba + qgetenv(vulkanVariable) + "/include"_ba;
             return {option};
         }
     }
@@ -386,7 +384,7 @@ QByteArrayList emulatedCompilerOptions(LanguageLevel level)
         if (level < LanguageLevel::Cpp20)
             result.append("-fdelayed-template-parsing"_ba);
         result.append(QByteArrayLiteral("-Wno-microsoft-enum-value"));
-        // result.append("/Zc:__cplusplus"_ba);
+        result.append("/Zc:__cplusplus"_ba);
         // Fix yvals_core.h:  STL1000: Unexpected compiler version, expected Clang 7 or newer (MSVC2017 update)
         result.append(QByteArrayLiteral("-D_ALLOW_COMPILER_AND_STL_VERSION_MISMATCH"));
         if (needsClangBuiltinIncludes())

@@ -14,7 +14,7 @@ from init_paths import init_test_paths
 init_test_paths(False)
 
 from helper.usesqapplication import UsesQApplication
-from PySide6.QtGui import QTextFrame, QTextCursor, QTextCharFormat, QFont, QTextFrameFormat
+from PySide6.QtGui import QTextCursor, QTextCharFormat, QFont, QTextFrameFormat
 from PySide6.QtWidgets import QTextEdit
 
 
@@ -22,13 +22,13 @@ class BugTest(UsesQApplication):
     def testCase(self):
         editor = QTextEdit()
         cursor = QTextCursor(editor.textCursor())
-        cursor.movePosition(QTextCursor.Start)
+        cursor.movePosition(QTextCursor.MoveOperation.Start)
 
         mainFrame = cursor.currentFrame()
 
         plainCharFormat = QTextCharFormat()
         boldCharFormat = QTextCharFormat()
-        boldCharFormat.setFontWeight(QFont.Bold)
+        boldCharFormat.setFontWeight(QFont.Weight.Bold)
         cursor.insertText("""
                           Text documents are represented by the
                           QTextDocument class, rather than by QString objects.

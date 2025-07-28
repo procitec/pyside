@@ -10,7 +10,7 @@ project_dir =
 # Source file path
 input_file =
 
-# Directory where exec is stored
+# Directory where the executable output is generated
 exec_directory =
 
 # Path to .pyproject project file
@@ -25,7 +25,7 @@ icon =
 python_path =
 
 # python packages to install
-packages = Nuitka==2.4.8
+packages = Nuitka==2.5.1
 
 # buildozer: for deploying Android application
 android_packages = buildozer==1.5.0,cython==0.29.33
@@ -42,7 +42,8 @@ excluded_qml_plugins =
 # Qt modules used. Comma separated
 modules =
 
-# Qt plugins used by the application
+# Qt plugins used by the application. Only relevant for desktop deployment. For Qt plugins used
+# in Android application see [android][plugins]
 plugins =
 
 [android]

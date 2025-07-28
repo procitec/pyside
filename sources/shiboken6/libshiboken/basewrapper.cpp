@@ -1,34 +1,32 @@
 // Copyright (C) 2019 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
+#include "autodecref.h"
 #include "basewrapper.h"
 #include "basewrapper_p.h"
 #include "bindingmanager.h"
+#include "gilstate.h"
 #include "helper.h"
 #include "pep384ext.h"
 #include "sbkconverter.h"
 #include "sbkerrors.h"
 #include "sbkfeature_base.h"
-#include "sbkstring.h"
 #include "sbkstaticstrings.h"
 #include "sbkstaticstrings_p.h"
+#include "sbkstring.h"
 #include "sbktypefactory.h"
-#include "autodecref.h"
-#include "gilstate.h"
-#include <string>
-#include <cstring>
-#include <cstddef>
-#include <set>
-#include <sstream>
-#include <algorithm>
-#include "threadstatesaver.h"
 #include "signature.h"
 #include "signature_p.h"
+#include "threadstatesaver.h"
 #include "voidptr.h"
 
-#include <string>
+#include <algorithm>
+#include <cstddef>
+#include <cstring>
 #include <iostream>
+#include <set>
 #include <sstream>
+#include <string>
 
 #if defined(__APPLE__)
 #include <dlfcn.h>
@@ -359,7 +357,7 @@ static void SbkDeallocWrapperCommon(PyObject *pyObj, bool canDelete)
     // Need to decref the type if this is the dealloc func; if type
     // is subclassed, that dealloc func will decref (see subtype_dealloc
     // in typeobject.c in the python sources)
-    auto dealloc = PyType_GetSlot(pyType, Py_tp_dealloc);
+    auto *dealloc = PyType_GetSlot(pyType, Py_tp_dealloc);
 
     // PYSIDE-939: Additional rule: Also when a subtype is heap allocated,
     // then the subtype_dealloc deref will be suppressed, and we need again
@@ -483,7 +481,7 @@ void SbkDeallocWrapperWithPrivateDtor(PyObject *self)
 void SbkObjectType_tp_dealloc(PyTypeObject *sbkType)
 {
     SbkObjectTypePrivate *sotp = PepType_SOTP(sbkType);
-    auto pyObj = reinterpret_cast<PyObject *>(sbkType);
+    auto *pyObj = reinterpret_cast<PyObject *>(sbkType);
 
     PyObject_GC_UnTrack(pyObj);
 #if !defined(Py_LIMITED_API) && !defined(PYPY_VERSION)
@@ -656,7 +654,7 @@ static PyObject *_setupNew(PyObject *obSelf, PyTypeObject *subtype)
     auto *self = reinterpret_cast<SbkObject *>(obSelf);
 
     Py_INCREF(obSubtype);
-    auto d = new SbkObjectPrivate;
+    auto *d = new SbkObjectPrivate;
 
     auto *sotp = PepType_SOTP(sbkSubtype);
     int numBases = ((sotp && sotp->is_multicpp) ?
@@ -734,6 +732,55 @@ bool SbkObjectType_Check(PyTypeObject *type)
 {
     static auto *meta = SbkObjectType_TypeF();
     return Py_TYPE(type) == meta || PyType_IsSubtype(Py_TYPE(type), meta);
+}
+
+// Global functions from folding.
+
+// The common end.
+PyObject *Sbk_ReturnFromPython_None()
+{
+    if (Shiboken::Errors::occurred() != nullptr) {
+        return {};
+    }
+    Py_RETURN_NONE;
+}
+
+PyObject *Sbk_ReturnFromPython_Result(PyObject *pyResult)
+{
+    if (Shiboken::Errors::occurred() != nullptr || pyResult == nullptr) {
+        Py_XDECREF(pyResult);
+        return {};
+    }
+    return pyResult;
+}
+
+PyObject *Sbk_ReturnFromPython_Self(PyObject *self)
+{
+    if (Shiboken::Errors::occurred() != nullptr) {
+        return {};
+    }
+    Py_INCREF(self);
+    return self;
+}
+
+// The virtual function call
+PyObject *Sbk_GetPyOverride(const void *voidThis, Shiboken::GilState &gil, const char *funcName,
+                            bool *resultCache, PyObject **nameCache)
+{
+    PyObject *pyOverride{};
+    if (!*resultCache) {
+        gil.acquire();
+        pyOverride = Shiboken::BindingManager::instance().getOverride(voidThis, nameCache, funcName);
+        if (pyOverride == nullptr) {
+            *resultCache = true;
+            gil.release();
+        } else if (Shiboken::Errors::occurred() != nullptr) {
+            // Give up.
+            Py_XDECREF(pyOverride);
+            pyOverride = nullptr;
+        }
+    }
+    return pyOverride;
 }
 
 } //extern "C"
@@ -1025,8 +1072,8 @@ introduceWrapperType(PyObject *enclosingObject,
             AutoDecRef tpDict(PepType_GetDict(reinterpret_cast<PyTypeObject *>(enclosingObject)));
             return PyDict_SetItemString(tpDict, typeName, ob_type) == 0 ? type : nullptr;
         }
-        assert(PyDict_Check(enclosingObject));
-        return PyDict_SetItemString(enclosingObject, typeName, ob_type) == 0 ? type : nullptr;
+        if (PyDict_Check(enclosingObject))
+            return PyDict_SetItemString(enclosingObject, typeName, ob_type) == 0 ? type : nullptr;
     }
 
     // PyModule_AddObject steals type's reference.
@@ -1103,7 +1150,7 @@ bool canDowncastTo(PyTypeObject *baseType, PyTypeObject *targetType)
 namespace Object
 {
 
-static void recursive_invalidate(SbkObject *self, std::set<SbkObject *>& seen);
+static void recursive_invalidate(SbkObject *self, std::set<SbkObject *> &seen);
 
 bool checkType(PyObject *pyObj)
 {
@@ -1260,8 +1307,7 @@ void releaseOwnership(PyObject *self)
 }
 
 /* Needed forward declarations */
-static void recursive_invalidate(PyObject *pyobj, std::set<SbkObject *>& seen);
-static void recursive_invalidate(SbkObject *self, std::set<SbkObject *> &seen);
+static void recursive_invalidate(PyObject *pyobj, std::set<SbkObject *> &seen);
 
 void invalidate(PyObject *pyobj)
 {
@@ -1530,10 +1576,9 @@ PyObject *newObjectForType(PyTypeObject *instanceType, void *cptr, bool hasOwner
     bool shouldRegister = true;
     SbkObject *self = nullptr;
 
+    auto &bindingManager = BindingManager::instance();
     // Some logic to ensure that colocated child field does not overwrite the parent
-    if (BindingManager::instance().hasWrapper(cptr)) {
-        SbkObject *existingWrapper = BindingManager::instance().retrieveWrapper(cptr);
-
+    if (SbkObject *existingWrapper = bindingManager.retrieveWrapper(cptr)) {
         self = findColocatedChild(existingWrapper, instanceType);
         if (self) {
             // Wrapper already registered for cptr.
@@ -1544,7 +1589,7 @@ PyObject *newObjectForType(PyTypeObject *instanceType, void *cptr, bool hasOwner
                   (!(Shiboken::Object::hasCppWrapper(existingWrapper) ||
                      Shiboken::Object::hasOwnership(existingWrapper)))) {
             // Old wrapper is likely junk, since we have ownership and it doesn't.
-            BindingManager::instance().releaseWrapper(existingWrapper);
+            bindingManager.releaseWrapper(existingWrapper);
         } else {
             // Old wrapper may be junk caused by some bug in identifying object deletion
             // but it may not be junk when a colocated field is accessed for an
@@ -1559,9 +1604,8 @@ PyObject *newObjectForType(PyTypeObject *instanceType, void *cptr, bool hasOwner
         self->d->cptr[0] = cptr;
         self->d->hasOwnership = hasOwnership;
         self->d->validCppObject = 1;
-        if (shouldRegister) {
-            BindingManager::instance().registerWrapper(self, cptr);
-        }
+        if (shouldRegister)
+            bindingManager.registerWrapper(self, cptr);
     } else {
         Py_IncRef(reinterpret_cast<PyObject *>(self));
     }
@@ -1673,8 +1717,8 @@ void setParent(PyObject *parent, PyObject *child)
     }
 
     bool parentIsNull = !parent || parent == Py_None;
-    auto parent_ = reinterpret_cast<SbkObject *>(parent);
-    auto child_ = reinterpret_cast<SbkObject *>(child);
+    auto *parent_ = reinterpret_cast<SbkObject *>(parent);
+    auto *child_ = reinterpret_cast<SbkObject *>(child);
 
     if (!parentIsNull) {
         if (!parent_->d->parentInfo)

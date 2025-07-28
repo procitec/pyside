@@ -24,13 +24,13 @@ class QSvgWidgetTest(unittest.TestCase):
         tigerPath = QDir.cleanPath(f"{directory}/../QtSvg/tiger.svg")
         self.assertTrue(QFileInfo.exists(tigerPath))
 
-        app = QApplication([])
+        app = QApplication([])  # noqa: F841
         fromFile = QSvgWidget()
         fromFile.load(tigerPath)
         self.assertTrue(fromFile.renderer().isValid())
 
         tigerFile = QFile(tigerPath)
-        tigerFile.open(QFile.ReadOnly)
+        tigerFile.open(QFile.OpenModeFlag.ReadOnly)
         tigerData = tigerFile.readAll()
         fromContents = QSvgWidget()
         fromContents.load(tigerData)
@@ -39,4 +39,3 @@ class QSvgWidgetTest(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
-

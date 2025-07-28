@@ -29,7 +29,6 @@ def get_build_dir():
         look_for = Path("testing")
         here = Path(__file__).resolve().parent
         while here / look_for not in here.iterdir():
-            import pprint
             parent = here.parent
             if parent == here:
                 raise SystemError(look_for + " not found!")
@@ -69,11 +68,8 @@ def add_python_dirs(python_dirs):
 def add_lib_dirs(lib_dirs):
     """Add directories to the platform's library path."""
     if sys.platform == 'win32':
-        if sys.version_info >= (3, 8, 0):
-            for lib_dir in lib_dirs:
-                os.add_dll_directory(lib_dir)
-        else:
-            _prepend_path_var('PATH', lib_dirs)
+        for lib_dir in lib_dirs:
+            os.add_dll_directory(lib_dir)
     else:
         _prepend_path_var('LD_LIBRARY_PATH', lib_dirs)
 
@@ -91,7 +87,7 @@ def shiboken_paths(include_shiboken_tests=False):
     shiboken_dir = Path(get_build_dir()) / 'shiboken6'
     lib_dirs = [os.fspath(shiboken_dir / 'libshiboken')]
     if include_shiboken_tests:
-        shiboken_test_dir = shiboken_dir /'tests'
+        shiboken_test_dir = shiboken_dir / 'tests'
         for module in ['minimal', 'sample', 'smart', 'other']:
             module_dir = shiboken_test_dir / f"{module}binding"
             python_dirs.append(os.fspath(module_dir))

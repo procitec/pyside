@@ -242,7 +242,7 @@ void AbstractMetaBuilderPrivate::registerHashFunction(const FunctionModelItem &f
     if (function_item->isDeleted())
         return;
     ArgumentList arguments = function_item->arguments();
-    if (arguments.size() >= 1) { // (Class, Hash seed).
+    if (!arguments.isEmpty()) { // (Class, Hash seed).
         if (AbstractMetaClassPtr cls = argumentToClass(arguments.at(0), currentClass))
             cls->setHashFunction(function_item->name());
     }
@@ -270,7 +270,7 @@ void AbstractMetaBuilderPrivate::registerToStringCapability(const FunctionModelI
             const ArgumentModelItem &arg = arguments.at(1);
             if (AbstractMetaClassPtr cls = argumentToClass(arg, currentClass)) {
                 if (arg->type().indirections() < 2)
-                    cls->setToStringCapability(true, int(arg->type().indirections()));
+                    cls->setToStringCapability(true, arg->type().indirections());
             }
         }
     }
@@ -787,7 +787,7 @@ AbstractMetaClassPtr
     // Continue populating namespace?
     AbstractMetaClassPtr metaClass = AbstractMetaClass::findClass(m_metaClasses, type);
     if (!metaClass) {
-        metaClass.reset(new AbstractMetaClass);
+        metaClass = std::make_shared<AbstractMetaClass>();
         metaClass->setTypeEntry(type);
         addAbstractMetaClass(metaClass, namespaceItem.get());
         if (auto extendsType = type->extends()) {
@@ -858,8 +858,8 @@ std::optional<AbstractMetaEnum>
     TypeEntryPtr typeEntry;
     const auto enclosingTypeEntry = enclosing ? enclosing->typeEntry() : TypeEntryCPtr{};
     if (enumItem->accessPolicy() == Access::Private) {
-        typeEntry.reset(new EnumTypeEntry(enumItem->qualifiedName().constLast(),
-                                          QVersionNumber(0, 0), enclosingTypeEntry));
+        typeEntry = std::make_shared<EnumTypeEntry>(enumItem->qualifiedName().constLast(),
+                                                    QVersionNumber(0, 0), enclosingTypeEntry);
         TypeDatabase::instance()->addType(typeEntry);
     } else if (enumItem->enumKind() != AnonymousEnum) {
         typeEntry = TypeDatabase::instance()->findType(qualifiedName);
@@ -1296,13 +1296,13 @@ std::optional<AbstractMetaField>
     metaField.setEnclosingClass(cls);
 
     TypeInfo fieldType = field->type();
-    auto metaType = translateType(fieldType, cls);
+    auto metaType = translateType(fieldType, cls, {}, &rejectReason);
 
     if (!metaType.has_value()) {
-        const QString type = TypeInfo::resolveType(fieldType, currentScope()).qualifiedName().join(u"::"_s);
         if (cls->typeEntry()->generateCode()) {
-             qCWarning(lcShiboken, "%s",
-                       qPrintable(msgSkippingField(field, cls->name(), type)));
+            const QString signature = qualifiedFieldSignatureWithType(className, field);
+            m_rejectedFields.insert({AbstractMetaBuilder::UnmatchedFieldType,
+                                     signature, signature, rejectReason});
         }
         return {};
     }
@@ -2117,8 +2117,10 @@ AbstractMetaFunctionPtr
         if (!type.has_value()) {
             const QString reason = msgUnmatchedReturnType(functionItem, errorMessage);
             const QString signature = qualifiedFunctionSignatureWithType(functionItem, className);
-            qCWarning(lcShiboken, "%s",
-                      qPrintable(msgSkippingFunction(functionItem, signature, reason)));
+            if (functionItem->attributes().testFlag(FunctionAttribute::Abstract)) { // Potential compilation error
+                qCWarning(lcShiboken, "%s",
+                          qPrintable(msgSkippingFunction(functionItem, signature, reason)));
+            }
             rejectFunction(functionItem, currentClass,
                            AbstractMetaBuilder::UnmatchedReturnType, reason);
             return {};
@@ -2185,8 +2187,10 @@ AbstractMetaFunctionPtr
             }
             const QString reason = msgUnmatchedParameterType(arg, i, errorMessage);
             const QString signature = qualifiedFunctionSignatureWithType(functionItem, className);
-            qCWarning(lcShiboken, "%s",
-                      qPrintable(msgSkippingFunction(functionItem, signature, reason)));
+            if (functionItem->attributes().testFlag(FunctionAttribute::Abstract)) { // Potential compilation error
+                qCWarning(lcShiboken, "%s",
+                          qPrintable(msgSkippingFunction(functionItem, signature, reason)));
+            }
             rejectFunction(functionItem, currentClass,
                            AbstractMetaBuilder::UnmatchedArgumentType, reason);
             return {};
@@ -2355,11 +2359,10 @@ TypeEntryCList AbstractMetaBuilderPrivate::findTypeEntries(const QString &qualif
 
     // Resolve entries added by metabuilder (for example, "GLenum") to match
     // the signatures for modifications.
-    for (qsizetype i = 0, size = types.size(); i < size; ++i) {
-        const auto &e = types.at(i);
+    for (auto &e : types) {
         if (e->isPrimitive()) {
             const auto pte = std::static_pointer_cast<const PrimitiveTypeEntry>(e);
-            types[i] = basicReferencedNonBuiltinTypeEntry(pte);
+            e = basicReferencedNonBuiltinTypeEntry(pte);
         }
     }
 
@@ -2700,7 +2703,7 @@ std::optional<AbstractMetaType>
             arrayType.setArrayElementType(elementType.value());
             const QString &arrayElement = typeInfo.arrayElements().at(i);
             if (!arrayElement.isEmpty()) {
-                bool _ok;
+                bool _ok{};
                 const qint64 elems = d
                     ? d->findOutValueFromString(arrayElement, _ok)
                     : arrayElement.toLongLong(&_ok, 0);
@@ -2938,7 +2941,7 @@ QString AbstractMetaBuilderPrivate::fixSimpleDefaultValue(QStringView expr,
     const auto cit = m_classToItem.constFind(klass);
     if (cit == m_classToItem.cend())
         return {};
-    auto *scope = dynamic_cast<const _ScopeModelItem *>(cit.value());
+    const auto *scope = dynamic_cast<const _ScopeModelItem *>(cit.value());
     if (!scope)
         return {};
     if (auto enumValue = scope->findEnumByValue(expr))
@@ -3038,7 +3041,7 @@ QString AbstractMetaBuilder::fixDefaultValue(const QString &expr, const Abstract
 
 bool AbstractMetaBuilderPrivate::isEnum(const FileModelItem &dom, const QStringList& qualified_name)
 {
-    CodeModelItem item = dom->model()->findItem(qualified_name, dom);
+    CodeModelItem item = CodeModel::findItem(qualified_name, dom);
     return item && item->kind() == _EnumModelItem::__node_kind;
 }
 
@@ -3138,11 +3141,11 @@ std::optional<AbstractMetaType>
 
     if (returned.hasInstantiations()) {
         AbstractMetaTypeList instantiations = returned.instantiations();
-        for (qsizetype i = 0; i < instantiations.size(); ++i) {
-            auto ins = inheritTemplateType(templateTypes, instantiations.at(i));
+        for (auto &instantiation : instantiations) {
+            auto ins = inheritTemplateType(templateTypes, instantiation);
             if (!ins.has_value())
                 return {};
-            instantiations[i] = ins.value();
+            instantiation = ins.value();
         }
         returned.setInstantiations(instantiations);
     }
@@ -3486,6 +3489,7 @@ static void writeRejectLogFile(const QString &name,
         {AbstractMetaBuilder::RedefinedToNotClass, "Type redefined to not be a class"_ba},
         {AbstractMetaBuilder::UnmatchedReturnType, "Unmatched return type"_ba},
         {AbstractMetaBuilder::UnmatchedArgumentType, "Unmatched argument type"_ba},
+        {AbstractMetaBuilder::UnmatchedFieldType, "Unmatched field type"_ba},
         {AbstractMetaBuilder::UnmatchedOperator, "Unmatched operator"_ba},
         {AbstractMetaBuilder::Deprecated, "Deprecated"_ba}
     };
@@ -3527,7 +3531,7 @@ void AbstractMetaBuilderPrivate::dumpLog() const
 template <class MetaClass>
 static bool addClassDependency(const QList<std::shared_ptr<MetaClass> > &classList,
                                const TypeEntryCPtr &typeEntry,
-                               std::shared_ptr<MetaClass> clazz,
+                               const std::shared_ptr<MetaClass> &clazz,
                                Graph<std::shared_ptr<MetaClass> > *graph)
 {
     if (!typeEntry->isComplex() || typeEntry == clazz->typeEntry())
@@ -3543,7 +3547,7 @@ static QList<std::shared_ptr<MetaClass> >
     topologicalSortHelper(const QList<std::shared_ptr<MetaClass> > &classList,
                           const Dependencies &additionalDependencies)
 {
-    Graph<std::shared_ptr<MetaClass> > graph(classList.cbegin(), classList.cend());
+    Graph<std::shared_ptr<MetaClass> > graph(classList);
 
     for (const auto &dep : additionalDependencies) {
         if (!graph.addEdge(dep.parent, dep.child)) {
@@ -3711,7 +3715,7 @@ void AbstractMetaBuilderPrivate::setInclude(const TypeEntryPtr &te, const QStrin
             return;
         }
 
-        int bestMatchLength = 0;
+        qsizetype bestMatchLength = 0;
         for (const auto &headerPath : m_headerPaths) {
             if (headerPath.size() > bestMatchLength && matchHeader(headerPath, path))
                 bestMatchLength = headerPath.size();

@@ -15,15 +15,15 @@ from PySide6.QtCore import QTimer
 from PySide6.QtWidgets import QApplication, QFrame
 
 
-class Mixin1(object):
+class Mixin1:
     pass
 
 
-class Mixin2(object):
+class Mixin2:
     pass
 
 
-class Mixin3(object):
+class Mixin3:
     pass
 
 
@@ -43,5 +43,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
-

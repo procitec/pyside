@@ -19,11 +19,41 @@ used literally as strings like "signature", "existence", etc.
 """
 
 import inspect
+import operator
+import sys
+import types
 import typing
 
+from functools import reduce
 from types import SimpleNamespace
 from textwrap import dedent
 from shibokensupport.signature.mapping import ellipsis, missing_optional_return
+from shibokensupport.signature.parser import using_snake_case
+from shibokensupport.signature import make_snake_case_name
+
+DEFAULT_PARAM_KIND = inspect.Parameter.POSITIONAL_ONLY
+
+
+def formatannotation(annotation, base_module=None):
+    if getattr(annotation, '__module__', None) == 'typing':
+        return repr(annotation).replace('typing.', '')
+    if isinstance(annotation, types.GenericAlias):
+        return str(annotation)
+    if isinstance(annotation, type):
+        if annotation.__module__ in ('builtins', base_module):
+            return annotation.__qualname__
+        return annotation.__module__ + '.' + annotation.__qualname__
+    return repr(annotation)
+
+
+# PYSIDE-3012: Patching Python < 3.9.8 or Python < 3.10.1
+def install_typing_patch():
+    v = sys.version_info[:3]
+    if v[1] == 9 and v[2] < 8 or v[1] == 10 and v[2] < 1:
+        inspect.formatannotation = formatannotation
+
+
+install_typing_patch()
 
 
 class SignatureLayout(SimpleNamespace):
@@ -97,84 +127,12 @@ typeerror = SignatureLayout(definition=False,
                             parameter_names=False)
 
 
-def define_nameless_parameter():
-    """
-    Create Nameless Parameters
-
-    A nameless parameter has a reduced string representation.
-    This is done by cloning the parameter type and overwriting its
-    __str__ method. The inner structure is still a valid parameter.
-    """
-    def __str__(self):
-        # for Python 2, we must change self to be an instance of P
-        klass = self.__class__
-        self.__class__ = P
-        txt = P.__str__(self)
-        self.__class__ = klass
-        txt = txt[txt.index(":") + 1:].strip() if ":" in txt else txt
-        return txt
-
-    P = inspect.Parameter
-    newname = "NamelessParameter"
-    bases = P.__bases__
-    body = dict(P.__dict__)  # get rid of mappingproxy
-    if "__slots__" in body:
-        # __slots__ would create duplicates
-        for name in body["__slots__"]:
-            del body[name]
-    body["__str__"] = __str__
-    return type(newname, bases, body)
-
-
-NamelessParameter = define_nameless_parameter()
-
-"""
-Note on the "Optional" feature:
-
-When an annotation has a default value that is None, then the
-type has to be wrapped into "typing.Optional".
-
-Note that only the None value creates an Optional expression,
-because the None leaves the domain of the variable.
-Defaults like integer values are ignored: They stay in the domain.
-
-That information would be lost when we use the "..." convention.
-
-Note that the typing module has the remarkable expansion
-
-    Optional[T]    is    Union[T, NoneType]
-
-We want to avoid that when generating the .pyi file.
-This is done by a regex in pyi_generator.py .
-The following would work in Python 3, but this is a version-dependent
-hack that also won't work in Python 2 and would be _very_ complex.
-"""
-# import sys
-# if sys.version_info[0] == 3:
-#     class hugo(list):pass
-#     typing._normalize_alias["hugo"] = "Optional"
-#     Optional = typing._alias(hugo, typing.T, inst=False)
-# else:
-#     Optional = typing.Optional
-
-
-def make_signature_nameless(signature):
-    """
-    Make a Signature Nameless
-
-    We use an existing signature and change the type of its parameters.
-    The signature looks different, but is totally intact.
-    """
-    for key in signature.parameters.keys():
-        signature.parameters[key].__class__ = NamelessParameter
-
-
-_POSITIONAL_ONLY         = inspect.Parameter.POSITIONAL_ONLY  # noqa E:201
+_POSITIONAL_ONLY         = inspect.Parameter.POSITIONAL_ONLY        # noqa E:201
 _POSITIONAL_OR_KEYWORD   = inspect.Parameter.POSITIONAL_OR_KEYWORD  # noqa E:201
-_VAR_POSITIONAL          = inspect.Parameter.VAR_POSITIONAL  # noqa E:201
-_KEYWORD_ONLY            = inspect.Parameter.KEYWORD_ONLY  # noqa E:201
-_VAR_KEYWORD             = inspect.Parameter.VAR_KEYWORD  # noqa E:201
-_empty                   = inspect.Parameter.empty  # noqa E:201
+_VAR_POSITIONAL          = inspect.Parameter.VAR_POSITIONAL         # noqa E:201
+_KEYWORD_ONLY            = inspect.Parameter.KEYWORD_ONLY           # noqa E:201
+_VAR_KEYWORD             = inspect.Parameter.VAR_KEYWORD            # noqa E:201
+_empty                   = inspect.Parameter.empty                  # noqa E:201
 
 
 default_weights = {
@@ -182,6 +140,7 @@ default_weights = {
     bool:        101,   # noqa E:241
     int:         102,   # noqa E:241
     float:       103,   # noqa E:241
+    object:      500,   # noqa E:241
 }
 
 
@@ -201,6 +160,11 @@ def get_ordering_key(anno):
 
     A special case are numeric types, which have also an ordering between them.
     They can be handled separately, since they are all of the shortest mro.
+
+    PYSIDE-3012: For some reason, we failed to transform `Union[a, b]` directly
+                 into `a | b`. Something unknown about comparison must be different.
+                 Therefore the transform function was put on top.
+    XXX Get rid of the function and document the problem thoroughly.
     """
     typing_type = typing.get_origin(anno)
     is_union = typing_type is typing.Union
@@ -233,7 +197,7 @@ def get_ordering_key(anno):
     # In 3.10 only None has no name. 3.9 is worse concerning typing constructs.
     name = anno.__name__ if hasattr(anno, "__name__") else "None"
     # Put typing containers after the plain type.
-    if typing_type and not is_union:
+    if typing_type:
         return (-leng + 100, parts, name)
     return (-leng, parts, name)
 
@@ -253,9 +217,31 @@ def sort_by_inheritance(signatures):
     return signatures
 
 
-def _remove_ambiguous_signatures_body(signatures):
+def best_to_remove(signatures, idx1, idx2, name):
+    # Both have identical annotation.
+    sig1 = signatures[idx1]
+    sig2 = signatures[idx2]
+    ra1 = sig1.return_annotation
+    ra2 = sig2.return_annotation
+    # Both have equal return annotations
+    if ra1 == ra2:
+        for p1, p2 in zip(sig1.parameters.values(), sig2.parameters.values()):
+            # Keep the first with a default.
+            if p1.default is not _empty or p2.default is not _empty:
+                # Note: We return what to remove!
+                return idx2 if p1.default is not _empty else idx1
+    if ra1 and ra2:
+        # Both have a return annotation.
+        # Remove the probably uglier of the two. This is likely to be the
+        # first one without effort because i.E. arg1 comes early in sorting.
+        return idx1
+    # Remove the one without a return annotation.
+    return idx1 if ra2 is not None else idx2
+
+
+def _remove_ambiguous_signatures_body(signatures, name):
     # By the sorting of signatures, duplicates will always be adjacent.
-    last_ann = last_sig = None
+    last_ann = None
     last_idx = -1
     to_delete = []
     found = False
@@ -265,14 +251,8 @@ def _remove_ambiguous_signatures_body(signatures):
             annos.append(param.annotation)
         if annos == last_ann:
             found = True
-            if sig.return_annotation is last_sig.return_annotation:
-                # we can use any duplicate
-                to_delete.append(idx)
-            else:
-                # delete the one which has non-empty result
-                to_delete.append(idx if not sig.return_annotation else last_idx)
+            to_delete.append(best_to_remove(signatures, idx, last_idx, name))
         last_ann = annos
-        last_sig = sig
         last_idx = idx
 
     if not found:
@@ -284,24 +264,26 @@ def _remove_ambiguous_signatures_body(signatures):
     return True, new_sigs
 
 
-def remove_ambiguous_signatures(signatures):
+def remove_ambiguous_signatures(signatures, name):
     # This may run more than once because of indexing.
-    found, new_sigs = _remove_ambiguous_signatures_body(signatures)
-    if found:
-        _, new_sigs = _remove_ambiguous_signatures_body(new_sigs)
+    found, new_sigs = _remove_ambiguous_signatures_body(signatures, name)
+    while found:
+        found, new_sigs = _remove_ambiguous_signatures_body(new_sigs, name)
     return new_sigs
 
 
-def create_signature(props, key):
+def create_signature_union(props, key):
     if not props:
         # empty signatures string
         return
     if isinstance(props["multi"], list):
         # multi sig: call recursively.
-        res = list(create_signature(elem, key) for elem in props["multi"])
+        # For debugging: Print the name!
+        name = props["multi"][0]["fullname"]
+        res = list(create_signature_union(elem, key) for elem in props["multi"])
         # PYSIDE-2846: Sort multi-signatures by inheritance in order to avoid shadowing.
         res = sort_by_inheritance(res)
-        res = remove_ambiguous_signatures(res)
+        res = remove_ambiguous_signatures(res, name)
         return res if len(res) > 1 else res[0]
 
     if type(key) is tuple:
@@ -334,9 +316,16 @@ def create_signature(props, key):
         del annotations["return"]
 
     # Build a signature.
-    kind = inspect._POSITIONAL_OR_KEYWORD
+    kind = last = DEFAULT_PARAM_KIND
     params = []
+    snake_flag = using_snake_case()
+
     for idx, name in enumerate(varnames):
+        if name == "*":
+            # This is a switch.
+            # Important: It must have a default to simplify the calculation.
+            kind = _KEYWORD_ONLY
+            continue
         if name.startswith("**"):
             kind = _VAR_KEYWORD
         elif name.startswith("*"):
@@ -347,24 +336,65 @@ def create_signature(props, key):
         name = name.lstrip("*")
         defpos = idx - len(varnames) + len(defaults)
         default = defaults[defpos] if defpos >= 0 else _empty
+        if default is not _empty:
+            if kind != _KEYWORD_ONLY:
+                kind = _POSITIONAL_OR_KEYWORD
+                if last == _VAR_POSITIONAL:
+                    kind = _KEYWORD_ONLY
         if default is None:
             ann = typing.Optional[ann]
         if default is not _empty and layout.ellipsis:
             default = ellipsis
+        if kind is _KEYWORD_ONLY:
+            # All these entries are properties. They might have been used already
+            # as normal parameter before and must be omitted here. Fixing that now:
+            if varnames.count(name) > 1:
+                assert varnames.count(name) == 2
+                if snake_flag and name != (new_name := make_snake_case_name(name)):
+                    # Patch this name backwards because it comes earlier as property.
+                    idx = varnames.index(name)
+                    params[idx] = params[idx].replace(name=new_name)
+                continue
+            if snake_flag:
+                name = make_snake_case_name(name)
+        last = kind
         param = inspect.Parameter(name, kind, annotation=ann, default=default)
         params.append(param)
-        if kind == _VAR_POSITIONAL:
-            kind = _KEYWORD_ONLY
+
     ret_anno = annotations.get('return', _empty)
     if ret_anno is not _empty and props["fullname"] in missing_optional_return:
         ret_anno = typing.Optional[ret_anno]
-    sig = inspect.Signature(params,
-                            return_annotation=ret_anno,
-                            __validate_parameters__=False)
+    return inspect.Signature(params, return_annotation=ret_anno,
+                             __validate_parameters__=False)
 
-    # the special case of nameless parameters
-    if not layout.parameter_names:
-        make_signature_nameless(sig)
-    return sig
+
+def transform(signature):
+    # Change the annotations of the parameters to use "|" syntax.
+    parameters = []
+    changed = False
+    for idx, param in enumerate(signature.parameters.values()):
+        ann = param.annotation
+        if typing.get_origin(ann) is typing.Union:
+            args = typing.get_args(ann)
+            ann = reduce(operator.or_, args)
+            param = param.replace(annotation=ann)
+            changed = True
+        parameters.append(param)
+
+    return signature.replace(parameters=parameters) if changed else signature
+
+
+def create_signature(props, key):
+    res = create_signature_union(props, key)
+    if type(res) is list:
+        for idx, sig in enumerate(res):
+            res[idx] = transform(sig)
+    else:
+        res = transform(res)
+    return res
+
+
+if sys.version_info[:2] < (3, 10):
+    create_signature = create_signature_union    # noqa F:811
 
 # end of file

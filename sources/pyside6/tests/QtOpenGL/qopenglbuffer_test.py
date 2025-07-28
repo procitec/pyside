@@ -4,7 +4,6 @@ from __future__ import annotations
 
 '''Unit tests for QOpenGLBuffer'''
 
-import ctypes
 import os
 import sys
 import unittest
@@ -15,32 +14,32 @@ from init_paths import init_test_paths
 init_test_paths(False)
 
 from helper.usesqapplication import UsesQApplication
-from PySide6.QtGui import QOffscreenSurface, QOpenGLContext, QSurface, QWindow
+from PySide6.QtGui import QOffscreenSurface, QOpenGLContext, QSurface, QWindow, QSurfaceFormat
 from PySide6.QtOpenGL import QOpenGLBuffer
 
 
 def createSurface(surfaceClass):
-    if surfaceClass == QSurface.Window:
+    if surfaceClass == QSurface.SurfaceClass.Window:
         window = QWindow()
-        window.setSurfaceType(QWindow.OpenGLSurface)
+        window.setSurfaceType(QWindow.SurfaceType.OpenGLSurface)
         window.setGeometry(0, 0, 10, 10)
         window.create()
         return window
-    elif surfaceClass == QSurface.Offscreen:
+    elif surfaceClass == QSurface.SurfaceClass.Offscreen:
         # Create a window and get the format from that.  For example, if an EGL
         # implementation provides 565 and 888 configs for PBUFFER_BIT but only
         # 888 for WINDOW_BIT, we may end up with a pbuffer surface that is
         # incompatible with the context since it could choose the 565 while the
         # window and the context uses a config with 888.
-        format = QSurfaceFormat
-        if format.redBufferSize() == -1:
+        _format = QSurfaceFormat
+        if _format.redBufferSize() == -1:
             window = QWindow()
-            window.setSurfaceType(QWindow.OpenGLSurface)
+            window.setSurfaceType(QWindow.SurfaceType.OpenGLSurface)
             window.setGeometry(0, 0, 10, 10)
             window.create()
-            format = window.format()
+            _format = window.format()
         offscreenSurface = QOffscreenSurface()
-        offscreenSurface.setFormat(format)
+        offscreenSurface.setFormat(_format)
         offscreenSurface.create()
         return offscreenSurface
     return 0
@@ -48,7 +47,7 @@ def createSurface(surfaceClass):
 
 class QOpenGLBufferTest(UsesQApplication):
     def testBufferCreate(self):
-        surface = createSurface(QSurface.Window)
+        surface = createSurface(QSurface.SurfaceClass.Window)
         ctx = QOpenGLContext()
         ctx.create()
         ctx.makeCurrent(surface)
@@ -60,7 +59,7 @@ class QOpenGLBufferTest(UsesQApplication):
         self.assertTrue(buf.create())
         self.assertTrue(buf.isCreated())
 
-        self.assertEqual(buf.type(), QOpenGLBuffer.VertexBuffer)
+        self.assertEqual(buf.type(), QOpenGLBuffer.Type.VertexBuffer)
 
         buf.bind()
         buf.allocate(128)

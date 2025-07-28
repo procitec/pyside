@@ -13,8 +13,8 @@ sys.path.append(os.fspath(Path(__file__).resolve().parents[1]))
 from init_paths import init_test_paths
 init_test_paths(False)
 
-from PySide6.QtCore import Qt, QObject
-from PySide6.QtWidgets import QPushButton, QLineEdit
+from PySide6.QtCore import Qt
+from PySide6.QtWidgets import QPushButton
 from PySide6.QtTest import QTest
 
 from helper.usesqapplication import UsesQApplication
@@ -28,10 +28,10 @@ class MouseClickTest(UsesQApplication):
         button.setCheckable(True)
         button.setChecked(False)
 
-        QTest.mouseClick(button, Qt.LeftButton)
+        QTest.mouseClick(button, Qt.MouseButton.LeftButton)
         self.assertTrue(button.isChecked())
 
-        QTest.mouseClick(button, Qt.LeftButton)
+        QTest.mouseClick(button, Qt.MouseButton.LeftButton)
         self.assertFalse(button.isChecked())
 
 

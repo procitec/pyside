@@ -13,7 +13,6 @@ import time
 from packaging.version import parse as parse_version
 from pathlib import Path
 from shutil import copytree, rmtree
-from textwrap import dedent
 
 # PYSIDE-1760: Pre-load setuptools modules early to avoid racing conditions.
 #              may be touched (should be avoided anyway, btw.)
@@ -40,7 +39,7 @@ from .platforms.windows_desktop import prepare_packages_win32
 from .qtinfo import QtInfo
 from .utils import (copydir, copyfile, detect_clang,
                     get_numpy_location, get_python_dict,
-                    linux_fix_rpaths_for_library, macos_fix_rpaths_for_library,
+                    linux_fix_rpaths_for_library, macos_fix_rpaths_for_library, parse_modules,
                     platform_cmake_options, remove_tree, run_process,
                     run_process_output, update_env_path, which)
 from . import PYSIDE, PYSIDE_MODULE, SHIBOKEN
@@ -121,7 +120,7 @@ def get_allowed_python_versions():
     pattern = r'Programming Language :: Python :: (\d+)\.(\d+)'
     supported = []
 
-    for line in config.python_version_classifiers:
+    for line in config.classifiers:
         found = re.search(pattern, line)
         if found:
             major = int(found.group(1))
@@ -487,27 +486,13 @@ class PysideBuild(_build, CommandMixin, BuildInfoCollectorMixin):
         log.info(f"Make generator: {self.make_generator}")
         log.info(f"Make jobs:      {OPTION['JOBS']}")
         log.info("-" * 3)
-        log.info(f"setup.py directory:      {self.script_dir}")
-        log.info(f"Build scripts directory: {build_scripts_dir}")
-        log.info(f"Sources directory:       {self.sources_dir}")
-        log.info(dedent(f"""
-        Building {config.package_name()} will create and touch directories
-          in the following order:
-            make build directory ->
-            make install directory ->
-            setuptools build directory ->
-            setuptools install directory
-              (usually path-installed-python/lib/python*/site-packages/*)
-         """))
+        log.info(f"setup.py directory:           {self.script_dir}")
+        log.info(f"Build scripts directory:      {build_scripts_dir}")
+        log.info(f"Sources directory:            {self.sources_dir}")
         log.info(f"make build directory:         {self.build_dir}")
         log.info(f"make install directory:       {self.install_dir}")
         log.info(f"setuptools build directory:   {self.st_build_dir}")
         log.info(f"setuptools install directory: {setuptools_install_prefix}")
-        log.info(dedent(f"""
-        make-installed site-packages directory: {self.site_packages_dir}
-         (only relevant for copying files from 'make install directory'
-                                          to   'setuptools build directory'
-         """))
         log.info("-" * 3)
         log.info(f"Python executable: {self.py_executable}")
         log.info(f"Python includes:   {self.py_include_dir}")
@@ -659,24 +644,11 @@ class PysideBuild(_build, CommandMixin, BuildInfoCollectorMixin):
                          f"Path given: {config_dir}")
 
         if OPTION["MODULE_SUBSET"]:
-            module_sub_set = ''
-            for m in OPTION["MODULE_SUBSET"].split(','):
-                if m.startswith('Qt'):
-                    m = m[2:]
-                if module_sub_set:
-                    module_sub_set += ';'
-                module_sub_set += m
-            cmake_cmd.append(f"-DMODULES={module_sub_set}")
+            cmake_cmd.append(f"-DMODULES={parse_modules(OPTION['MODULE_SUBSET'])}")
 
         if OPTION["SKIP_MODULES"]:
-            skip_modules = ''
-            for m in OPTION["SKIP_MODULES"].split(','):
-                if m.startswith('Qt'):
-                    m = m[2:]
-                if skip_modules:
-                    skip_modules += ';'
-                skip_modules += m
-            cmake_cmd.append(f"-DSKIP_MODULES={skip_modules}")
+            cmake_cmd.append(f"-DSKIP_MODULES={parse_modules(OPTION['SKIP_MODULES'])}")
+
         # Add source location for generating documentation
         cmake_src_dir = OPTION["QT_SRC"] if OPTION["QT_SRC"] else qt_src_dir
         if cmake_src_dir:
@@ -712,17 +684,20 @@ class PysideBuild(_build, CommandMixin, BuildInfoCollectorMixin):
             if OPTION['NO_OVERRIDE_OPTIMIZATION_FLAGS']:
                 cmake_cmd.append("-DQFP_NO_OVERRIDE_OPTIMIZATION_FLAGS=1")
 
-        if OPTION["LIMITED_API"] == "yes":
-            cmake_cmd.append("-DFORCE_LIMITED_API=yes")
-        elif OPTION["LIMITED_API"] == "no":
-            cmake_cmd.append("-DFORCE_LIMITED_API=no")
-        elif not OPTION["LIMITED_API"]:
+        if not OPTION["LIMITED_API"]:
             if sys.platform == 'win32' and self.debug:
                 cmake_cmd.append("-DFORCE_LIMITED_API=no")
         else:
-            raise SetupError("option limited-api must be 'yes' or 'no' "
-                             "(default yes if applicable, i.e. Python "
-                             "version >= 3.9 and release build if on Windows)")
+            if OPTION["LIMITED_API"].lower() in ("yes", "y", "1", "true"):
+                cmake_cmd.append("-DFORCE_LIMITED_API=yes")
+            elif OPTION["LIMITED_API"].lower() in ("no", "n", "0", "false"):
+                cmake_cmd.append("-DFORCE_LIMITED_API=no")
+            else:
+                raise SetupError(
+                    "Option '--limited-api' must be 'yes' or 'no'."
+                    f"Default is yes if Python version >= {get_allowed_python_versions()[0]} "
+                    "and Release build on Windows"
+                )
 
         if OPTION["DISABLE_PYI"]:
             cmake_cmd.append("-DDISABLE_PYI=yes")
@@ -883,13 +858,6 @@ class PysideBuild(_build, CommandMixin, BuildInfoCollectorMixin):
         if run_process(cmd_make) != 0:
             raise SetupError(f"Error compiling {extension}")
 
-        if sys.version_info == (3, 6) and sys.platform == "darwin":
-            # Python 3.6 has a Sphinx problem because of docutils 0.17 .
-            # Instead of pinning v0.16, setting the default encoding fixes that.
-            # Since other platforms are not affected, we restrict this to macOS.
-            if "UTF-8" not in os.environ.get("LC_ALL", ""):
-                os.environ["LC_ALL"] = "en_US.UTF-8"
-
         if OPTION["BUILD_DOCS"]:
             if extension.lower() == SHIBOKEN:
                 found = importlib.util.find_spec("sphinx")
@@ -986,7 +954,7 @@ class PysideBuild(_build, CommandMixin, BuildInfoCollectorMixin):
                     log.warning(f'ignored error: {e}')
 
             if sys.platform == "win32":
-                _vars['dbg_postfix'] = ""  # OPTION["DEBUG"] and "_d" or ""
+                _vars['dbg_postfix'] = OPTION["DEBUG"] and "_d" or ""
                 return prepare_packages_win32(self, _vars)
             else:
                 return prepare_packages_posix(self, _vars, self.is_cross_compile)

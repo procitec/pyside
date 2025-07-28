@@ -235,6 +235,7 @@ child nodes.
             since="..."
             extends = "..."
             files = "..."
+            doc-file = "..."
             revision="..." />
     </typesystem>
 
@@ -274,6 +275,9 @@ generated extending ``QtCore.Qt`` if **extends** is specified.
 The *optional* **file** attribute specifies a regular expression matching the
 include files whose contents are to be associated with the current module in
 case of a namespace spanning several modules.
+
+The *optional* **doc-file** attribute specifies the base name of a ``.qdoc``
+file where documentation of the class is to be found (``qdoc`` only).
 
 .. _enum-type:
 
@@ -388,7 +392,8 @@ node or other type nodes and may contain :ref:`add-function`, :ref:`add-pymethod
          stream="yes | no"
          default-constructor="..."
          revision="..."
-         snake-case="yes | no | both" />
+         snake-case="yes | no | both"
+         doc-file = "..." />
     </typesystem>
 
 The **name** attribute is the fully qualified C++ class name, such as
@@ -436,6 +441,9 @@ The *optional* **isNull** and **operator-bool** attributes can be used
 to override the command line setting for generating bool casts
 (see :ref:`bool-cast`).
 
+The *optional* **doc-file** attribute specifies the base name of a ``.qdoc``
+file where documentation of the class is to be found (``qdoc`` only).
+
 .. _object-type:
 
 object-type
@@ -473,7 +481,8 @@ or other type nodes and may contain :ref:`add-function`, :ref:`add-pymethoddef`,
          qt-register-metatype = "yes | no | base"
          stream="yes | no"
          revision="..."
-         snake-case="yes | no | both" />
+         snake-case="yes | no | both"
+         doc-file = "..." />
     </typesystem>
 
 The **name** attribute is the fully qualified C++ class name. If there is no
@@ -552,6 +561,9 @@ attribute.
 
 For the *optional* **polymorphic-id-expression**, **polymorphic-name-function**
 and **polymorphic-base** attributes, see :ref:`typediscovery-attributes`.
+
+The *optional* **doc-file** attribute specifies the base name of a ``.qdoc``
+file where documentation of the class is to be found (``qdoc`` only).
 
 interface-type
 ^^^^^^^^^^^^^^
@@ -716,7 +728,8 @@ will be generated into specific modules.
             value-check-method="..."
             null-check-method="..."
             reset-method="..."
-            instantiations="..."/>
+            instantiations="..."
+            excluded-instantiations="..."/>
         </typesystem>
 
 
@@ -729,7 +742,7 @@ that can be used to check for ``nullptr``.
 The *optional* attribute **reset-method** specifies a method
 that can be used to clear the pointer.
 
-The *optional* instantiations attribute specifies a comma-separated
+The *optional* **instantiations** attribute specifies a comma-separated
 list of instantiation types. When left empty, all instantiations
 found in the code will be generated. The type name might optionally
 be followed an equal sign and the Python type name, for example
@@ -738,6 +751,11 @@ It is also possible to specify a namespace delimited by ``::``.
 By default, the type will be in the namespace of the smart pointer,
 for example, ``std`` for ``std::shared_ptr``. Preceding
 the type name by ``::`` causes it to be in the global namespace.
+
+The *optional* **excluded-instantiations** attribute specifies a
+comma-separated list of types to be excluded from instantiating. Typically,
+this is used to exclude instantiations present in an underlying base module to
+prevent symbol clashes.
 
 The *optional* attribute **type** specifies the type:
 
@@ -877,8 +895,6 @@ for enclosing added functions referring to those classes within
 Other keywords can be specified using the
 :ref:`--keywords <conditional_keywords>` command line option.
 
-.. _private_types:
-
 Defining Entities
 ^^^^^^^^^^^^^^^^^
 
@@ -891,6 +907,8 @@ It is possible to define entities using a simple processing instruction:
 
 This allows for defining function signatures depending on platform
 in conjunction with :ref:`conditional_processing`.
+
+.. _private_types:
 
 Private Types
 ^^^^^^^^^^^^^

@@ -717,11 +717,14 @@ static void invalidatePtr(any_t *object)
     if (Py_IsInitialized() == 0)
         return;
 
-    Shiboken::GilState state;
-
-    SbkObject *wrapper = Shiboken::BindingManager::instance().retrieveWrapper(object);
-    if (wrapper != nullptr)
-        Shiboken::BindingManager::instance().releaseWrapper(wrapper);
+    // Check for existence before locking (fix hang when QObjects
+    // are moved to different threads).
+    auto &bindingManager = Shiboken::BindingManager::instance();
+    if (bindingManager.hasWrapper(object)) {
+        Shiboken::GilState state;
+        if (SbkObject *wrapper = bindingManager.retrieveWrapper(object))
+            bindingManager.releaseWrapper(wrapper);
+    }
 }
 
 static const char invalidatePropertyName[] = "_PySideInvalidatePtr";
@@ -779,10 +782,7 @@ PyTypeObject *getTypeForQObject(const QObject *cppSelf)
     if (existing != nullptr)
         return reinterpret_cast<PyObject *>(existing)->ob_type;
     // Find the best match (will return a PySide type)
-    auto *sbkObjectType = Shiboken::ObjectType::typeForTypeName(typeName(cppSelf));
-    if (sbkObjectType != nullptr)
-        return reinterpret_cast<PyTypeObject *>(sbkObjectType);
-    return nullptr;
+    return Shiboken::ObjectType::typeForTypeName(typeName(cppSelf));
 }
 
 PyObject *getWrapperForQObject(QObject *cppSelf, PyTypeObject *sbk_type)

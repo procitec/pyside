@@ -66,20 +66,24 @@
     <inject-code class="native" position="beginning" file="../glue/qtcore.cpp"
                  snippet="darwin_permission_plugin"/>
 
-    <add-function signature="qDebug(const char*)">
-        <inject-code file="../glue/qtcore.cpp" snippet="use-stream-for-format-security"/>
+    <add-function signature="qDebug(const char*@message@)">
+        <inject-code file="../glue/qtcore.cpp" snippet="qdebug-format-string"/>
         <modify-argument index="1" pyi-type="str"/>
     </add-function>
-    <add-function signature="qCritical(const char*)">
-        <inject-code file="../glue/qtcore.cpp" snippet="use-stream-for-format-security"/>
+    <add-function signature="qCritical(const char*@message@)">
+        <inject-code file="../glue/qtcore.cpp" snippet="qdebug-format-string"/>
         <modify-argument index="1" pyi-type="str"/>
     </add-function>
-    <add-function signature="qFatal(const char*)">
+    <add-function signature="qFatal(const char*@message@)">
         <inject-code file="../glue/qtcore.cpp" snippet="qfatal"/>
         <modify-argument index="1" pyi-type="str"/>
     </add-function>
-    <add-function signature="qWarning(const char*)">
-        <inject-code file="../glue/qtcore.cpp" snippet="use-stream-for-format-security"/>
+    <add-function signature="qInfo(const char*@message@)">
+        <inject-code file="../glue/qtcore.cpp" snippet="qdebug-format-string"/>
+        <modify-argument index="1" pyi-type="str"/>
+    </add-function>
+    <add-function signature="qWarning(const char*@message@)">
+        <inject-code file="../glue/qtcore.cpp" snippet="qdebug-format-string"/>
         <modify-argument index="1" pyi-type="str"/>
     </add-function>
 
@@ -378,12 +382,12 @@
       </extra-includes>
       <enum-type name="Type" python-type="IntEnum"/>
       <enum-type name="TypeFlag" flags="TypeFlags"/>
-      <add-function signature="QMetaType(PyTypeObject*)">
+      <add-function signature="QMetaType(PyTypeObject*@py_type@)">
           <inject-code class="target" position="beginning" file="../glue/qtcore.cpp"
                        snippet="metatype-from-type"/>
       </add-function>
       <!-- PYSIDE-1735: The class QMetaType.Type must be allowed because int is gone -->
-      <add-function signature="QMetaType(QMetaType::Type)">
+      <add-function signature="QMetaType(QMetaType::Type@type@)">
           <inject-code class="target" position="beginning" file="../glue/qtcore.cpp"
                        snippet="metatype-from-metatype-type"/>
       </add-function>
@@ -669,7 +673,7 @@
     <inject-code class="target" position="beginning" file="../glue/qtcore.cpp" snippet="qt-qabs"/>
   </add-function>
 
-  <add-function signature="qAddPostRoutine(PyObject*)">
+  <add-function signature="qAddPostRoutine(PyObject*@callable@)">
     <inject-code class="target" position="beginning" file="../glue/qtcore.cpp" snippet="qt-addpostroutine"/>
   </add-function>
   <inject-code class="target" position="end" file="../glue/qtcore.cpp" snippet="qt-qaddpostroutine"/>
@@ -688,7 +692,7 @@
   <inject-code class="native" position="beginning" file="../glue/qtcore.cpp" snippet="qt-messagehandler"/>
   <inject-code class="native" position="beginning" file="../glue/qtcore.cpp"
                snippet="qlatin1string-check"/>
-  <add-function signature="qInstallMessageHandler(PyObject)" return-type="PyObject">
+  <add-function signature="qInstallMessageHandler(PyObject@callable@)" return-type="PyObject">
     <inject-code class="target" position="beginning" file="../glue/qtcore.cpp" snippet="qt-installmessagehandler"/>
   </add-function>
 
@@ -780,7 +784,7 @@
   <object-type name="QResource">
     <enum-type name="Compression"/>
     <modify-function signature="data()const">
-        <inject-documentation format="target">
+        <inject-documentation format="target" emphasis="language-note">
             Returns a read only buffer object pointing to the segment of data that this resource represents. If the resource is compressed the data returns is compressed and qUncompress() must be used to access the data. If the resource is a directory None is returned.
         </inject-documentation>
         <modify-argument index="return">
@@ -885,14 +889,14 @@
       <include file-name="datetime.h" location="global"/>
     </extra-includes>
     <!-- Somewhat internal constructor used to pickle QDateTime -->
-    <add-function signature="QDateTime(int,int,int,int,int,int,int,int=Qt::LocalTime)">
+    <add-function signature="QDateTime(int@year@,int@month@,int@day@,int@h@,int@m@,int@s@,int@ms@,int@spec@=Qt::LocalTime)">
         <inject-code class="target" position="beginning" file="../glue/qtcore.cpp" snippet="qdatetime-1"/>
     </add-function>
-    <add-function signature="QDateTime(int,int,int,int,int,int)">
+    <add-function signature="QDateTime(int@year@,int@month@,int@day@,int@h@,int@m@,int@s@)">
         <inject-code class="target" position="beginning" file="../glue/qtcore.cpp" snippet="qdatetime-2"/>
     </add-function>
     <!-- PYSIDE-1735: Qt::TimeSpec is no more compatible with int -->
-    <add-function signature="QDateTime(int,int,int,int,int,int,int,Qt::TimeSpec=Qt::LocalTime)">
+    <add-function signature="QDateTime(int@year@,int@month@,int@day@,int@h@,int@m@,int@s@,int@ms@,Qt::TimeSpec@spec@=Qt::LocalTime)">
         <inject-code class="target" position="beginning" file="../glue/qtcore.cpp" snippet="qdatetime-3"/>
     </add-function>
     <add-function signature="__repr__" return-type="str">
@@ -1308,6 +1312,8 @@
             <insert-template name="return_internal_pointer" />
         </inject-code>
     </modify-function>
+    <!-- Remove  const variation in favor of using internalPointer -->
+    <modify-function signature="constInternalPointer()const" remove="all"/>
     <modify-function signature="operator QModelIndex()const">
         <modify-argument index="return">
             <parent index="this" action="add"/>
@@ -1510,7 +1516,7 @@
     <modify-function signature="^to.*\(.*QStringView.*$" remove="all"/>
   </value-type>
   <value-type name="QBitArray">
-    <add-function signature="__len__">
+    <add-function signature="__len__" return-type="int">
         <inject-code class="target" position="beginning" file="../glue/qtcore.cpp" snippet="qbitarray-len"/>
     </add-function>
     <add-function signature="__getitem__">
@@ -1630,7 +1636,7 @@
 
   <value-type name="QModelRoleDataSpan">
       <modify-function signature="dataForRole(int)const" remove="all"/>
-      <add-function signature="__len__">
+      <add-function signature="__len__" return-type="int">
           <inject-code class="target" position="beginning" file="../glue/qtcore.cpp"
                        snippet="qmodelroledataspan-len"/>
       </add-function>
@@ -1814,7 +1820,7 @@
         <inject-code class="target" position="beginning" file="../glue/qtcore.cpp" snippet="qobject-connect-6"/>
     </add-function>
 
-    <add-function signature="emit(const char*,...)" return-type="bool">
+    <add-function signature="emit(const char*@signal@,...)" return-type="bool">
         <inject-code class="target" position="beginning" file="../glue/qtcore.cpp" snippet="qobject-emit"/>
     </add-function>
     <add-function signature="disconnect(const char*@signal@,PyCallable*@functor@)" return-type="bool">
@@ -2010,7 +2016,7 @@
     <modify-function signature="operator+(QByteArray,const char*)" remove="all"/>
     <modify-function signature="operator+(const char*,QByteArray)" remove="all"/>
     <modify-function signature="operator+(QByteArray,const char*)" remove="all"/>
-    <add-function signature="operator+(PyBytes,QByteArray)">
+    <add-function signature="operator+(PyBytes,QByteArray)" return-type="QByteArray">
         <inject-code file="../glue/qtcore.cpp" snippet="qbytearray-operatorplus-1"/>
     </add-function>
     <add-function signature="operator+(PyByteArray, QByteArray)" return-type="QByteArray">
@@ -2022,22 +2028,22 @@
     <add-function signature="operator+=(PyByteArray)" return-type="QByteArray">
         <inject-code file="../glue/qtcore.cpp" snippet="qbytearray-operatorplusequal"/>
     </add-function>
-    <add-function signature="operator==(PyUnicode)">
+    <add-function signature="operator==(PyUnicode)" return-type="bool">
         <inject-code file="../glue/qtcore.cpp" snippet="qbytearray-operatorequalequal"/>
     </add-function>
-    <add-function signature="operator!=(PyUnicode)">
+    <add-function signature="operator!=(PyUnicode)" return-type="bool">
         <inject-code file="../glue/qtcore.cpp" snippet="qbytearray-operatornotequal"/>
     </add-function>
-    <add-function signature="operator&gt;(PyUnicode)">
+    <add-function signature="operator&gt;(PyUnicode)" return-type="bool">
         <inject-code file="../glue/qtcore.cpp" snippet="qbytearray-operatorgreater"/>
     </add-function>
-    <add-function signature="operator&gt;=(PyUnicode)">
+    <add-function signature="operator&gt;=(PyUnicode)" return-type="bool">
         <inject-code file="../glue/qtcore.cpp" snippet="qbytearray-operatorgreaterequal"/>
     </add-function>
-    <add-function signature="operator&lt;(PyUnicode)">
+    <add-function signature="operator&lt;(PyUnicode)" return-type="bool">
         <inject-code file="../glue/qtcore.cpp" snippet="qbytearray-operatorlower"/>
     </add-function>
-    <add-function signature="operator&lt;=(PyUnicode)">
+    <add-function signature="operator&lt;=(PyUnicode)" return-type="bool">
         <inject-code file="../glue/qtcore.cpp" snippet="qbytearray-operatorlowerequal"/>
     </add-function>
     <!-- ### -->
@@ -2054,10 +2060,10 @@
             </insert-template>
         </inject-code>
     </add-function>
-    <add-function signature="QByteArray(PyByteArray)">
+    <add-function signature="QByteArray(PyByteArray@data@)">
          <inject-code class="target" position="beginning" file="../glue/qtcore.cpp" snippet="qbytearray-2"/>
     </add-function>
-    <add-function signature="QByteArray(PyBytes)">
+    <add-function signature="QByteArray(PyBytes@data@)">
         <inject-code class="target" position="beginning" file="../glue/qtcore.cpp" snippet="qbytearray-3"/>
     </add-function>
     <!-- buffer protocol -->
@@ -2202,7 +2208,7 @@
     <add-function signature="__str__" return-type="str">
         <inject-code class="target" position="beginning" file="../glue/qtcore.cpp" snippet="qbytearray-str"/>
     </add-function>
-    <add-function signature="__len__">
+    <add-function signature="__len__" return-type="int">
         <inject-code class="target" position="beginning" file="../glue/qtcore.cpp" snippet="qbytearray-len"/>
     </add-function>
     <add-function signature="__getitem__">
@@ -2256,9 +2262,8 @@
             <insert-template name="return_native_eventfilter_conversion"/>
         </conversion-rule>
       </modify-argument>
-      <inject-code position="end">
-          <insert-template name="return_native_eventfilter"/>
-      </inject-code>
+      <inject-code position="end"
+                   file="../glue/qtcore.cpp" snippet="return-native-eventfilter"/>
     </modify-function>
   </object-type>
 
@@ -3045,7 +3050,7 @@
         <parent index="this" action="add"/>
       </modify-argument>
     </modify-function>
-    <add-function signature="tryStart(PyCallable)" return-type="bool">
+    <add-function signature="tryStart(PyCallable@callable@)" return-type="bool">
        <inject-code class="target" position="beginning"
                     file="../glue/qtcore.cpp"
                     snippet="std-function-void-lambda"/>
@@ -3410,7 +3415,7 @@
     </extra-includes>
     <inject-code file="../glue/qtcore.cpp" snippet="qeasingcurve"/>
     <enum-type name="Type"/>
-    <add-function signature="setCustomType(PyObject*)">
+    <add-function signature="setCustomType(PyObject*@callable@)">
       <inject-code file="../glue/qtcore.cpp" snippet="qeasingcurve-setcustomtype"/>
     </add-function>
     <add-function signature="customType()" return-type="PyObject">
@@ -3471,37 +3476,37 @@
 
   <!-- From Qt4.6 ^^^ -->
 
-  <add-function signature="SIGNAL(const char*)" return-type="str">
+  <add-function signature="SIGNAL(const char*@signature@)" return-type="str">
     <inject-code class="target" position="beginning" file="../glue/qtcore.cpp" snippet="qt-signal"/>
     <modify-argument index="1" pyi-type="str"/>
   </add-function>
 
-  <add-function signature="SLOT(const char*)" return-type="str">
+  <add-function signature="SLOT(const char*@signature@)" return-type="str">
     <inject-code class="target" position="beginning" file="../glue/qtcore.cpp" snippet="qt-slot"/>
     <modify-argument index="1" pyi-type="str"/>
   </add-function>
 
-  <add-function signature="QT_TR_NOOP(PyObject)" return-type="PyObject*">
+  <add-function signature="QT_TR_NOOP(PyObject@message@)" return-type="PyObject*">
     <inject-code class="target" position="beginning">
       <insert-template name="return_argument"><replace from="#" to="1"/></insert-template>
     </inject-code>
   </add-function>
-  <add-function signature="QT_TR_NOOP_UTF8(PyObject)" return-type="PyObject*">
+  <add-function signature="QT_TR_NOOP_UTF8(PyObject@message@)" return-type="PyObject*">
     <inject-code class="target" position="beginning">
       <insert-template name="return_argument"><replace from="#" to="1"/></insert-template>
     </inject-code>
   </add-function>
-  <add-function signature="QT_TRANSLATE_NOOP(PyObject,PyObject)" return-type="PyObject*">
+  <add-function signature="QT_TRANSLATE_NOOP(PyObject@context@,PyObject@message@)" return-type="PyObject*">
     <inject-code class="target" position="beginning">
       <insert-template name="return_argument"><replace from="#" to="2"/></insert-template>
     </inject-code>
   </add-function>
-  <add-function signature="QT_TRANSLATE_NOOP3(PyObject,PyObject,PyObject)" return-type="PyObject*">
+  <add-function signature="QT_TRANSLATE_NOOP3(PyObject@context@,PyObject@message@,PyObject@disambiguation@)" return-type="PyObject*">
     <inject-code class="target" position="beginning">
       <insert-template name="return_argument"><replace from="#" to="2"/></insert-template>
     </inject-code>
   </add-function>
-  <add-function signature="QT_TRANSLATE_NOOP_UTF8(PyObject)" return-type="PyObject*">
+  <add-function signature="QT_TRANSLATE_NOOP_UTF8(PyObject@message@)" return-type="PyObject*">
     <inject-code class="target" position="beginning">
       <insert-template name="return_argument"><replace from="#" to="1"/></insert-template>
     </inject-code>
@@ -3560,30 +3565,30 @@
 
   <object-type name="QLoggingCategory"/>
 
-  <add-function signature="qCDebug(PyObject *, const char *)">
+  <add-function signature="qCDebug(QLoggingCategory *@logging_category@, const char *@message@)">
     <extra-includes>
     <include file-name="qloggingcategory.h" location="global" />
     </extra-includes>
-    <inject-code class="target" position="beginning" file="../glue/qtcore.cpp" snippet="qloggingcategory_to_cpp">
-      qCDebug((*category), "%s", %2);
+    <inject-code class="target" position="beginning">
+      qCDebug(*%1, "%s", %2);
     </inject-code>
   </add-function>
 
-  <add-function signature="qCCritical(PyObject *, const char *)">
-    <inject-code class="target" position="beginning" file="../glue/qtcore.cpp" snippet="qloggingcategory_to_cpp">
-      qCCritical((*category), "%s", %2);
+  <add-function signature="qCCritical(QLoggingCategory *@logging_category@, const char *@message@)">
+    <inject-code class="target" position="beginning">
+      qCCritical(*%1, "%s", %2);
     </inject-code>
   </add-function>
 
-  <add-function signature="qCInfo(PyObject *, const char *)">
-    <inject-code class="target" position="beginning" file="../glue/qtcore.cpp" snippet="qloggingcategory_to_cpp">
-      qCInfo((*category), "%s", %2);
+  <add-function signature="qCInfo(QLoggingCategory *@logging_category@, const char *@message@)">
+    <inject-code class="target" position="beginning">
+      qCInfo(*%1, "%s", %2);
     </inject-code>
   </add-function>
 
-  <add-function signature="qCWarning(PyObject *, const char *)">
-    <inject-code class="target" position="beginning" file="../glue/qtcore.cpp" snippet="qloggingcategory_to_cpp">
-      qCWarning((*category), "%s", %2);
+  <add-function signature="qCWarning(QLoggingCategory *@logging_category@, const char *@message@)">
+    <inject-code class="target" position="beginning">
+      qCWarning(*%1, "%s", %2);
     </inject-code>
   </add-function>
 

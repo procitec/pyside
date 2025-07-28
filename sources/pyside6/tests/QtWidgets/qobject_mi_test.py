@@ -13,7 +13,6 @@ sys.path.append(os.fspath(Path(__file__).resolve().parents[1]))
 from init_paths import init_test_paths
 init_test_paths(False)
 
-from PySide6.QtCore import QObject
 from PySide6.QtGui import QIntValidator, QValidator
 from PySide6.QtWidgets import QWidget
 
@@ -43,9 +42,9 @@ class DoubleQObjectInheritanceTest(UsesQApplication):
 
         # QIntValidator methods
         state, string, number = obj.validate('aaaa', 0)
-        self.assertEqual(state, QValidator.Invalid)
+        self.assertEqual(state, QValidator.State.Invalid)
         state, string, number = obj.validate('33', 0)
-        self.assertEqual(state, QValidator.Acceptable)
+        self.assertEqual(state, QValidator.State.Acceptable)
 
 
 if __name__ == '__main__':

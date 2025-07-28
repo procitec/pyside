@@ -95,7 +95,8 @@ private:
     void writeVirtualMethodCppCall(TextStream &s, const AbstractMetaFunctionCPtr &func,
                                    const QString &funcName, const QList<CodeSnip> &snips,
                                    const AbstractMetaArgument *lastArg, const TypeEntryCPtr &retType,
-                                   const QString &returnStatement, bool hasGil) const;
+                                   const QString &returnStatement,
+                                   bool ownsGil, bool hasGilVar) const;
 
     static VirtualMethodReturn virtualMethodReturn(const ApiExtractorResult &api,
                                                    const AbstractMetaFunctionCPtr &func,
@@ -328,7 +329,7 @@ private:
 
     /// Writes a C++ to Python conversion function.
     void writeCppToPythonFunction(TextStream &s, const QString &code, const QString &sourceTypeName,
-                                  QString targetTypeName = QString()) const;
+                                  const QString &targetTypeName = {}) const;
     void writeCppToPythonFunction(TextStream &s, const CustomConversionPtr &customConversion) const;
     void writeCppToPythonFunction(TextStream &s, const AbstractMetaType &containerType) const;
     /// Main target type name of a container (for naming the functions).
@@ -419,7 +420,8 @@ private:
     QByteArrayList methodDefinitionParameters(const OverloadData &overloadData) const;
     QList<PyMethodDefEntry> methodDefinitionEntries(const OverloadData &overloadData) const;
 
-    void writeSignatureInfo(TextStream &s, const OverloadData &overloads) const;
+    void writeSignatureInfo(TextStream &s, const OverloadData &overloads,
+                            bool useProperties=false) const;
     QString signatureParameter(const AbstractMetaArgument &arg, bool implicitConversions) const;
     QString pythonSignature(const AbstractMetaType &type) const;
     /// Writes the implementation of all methods part of python sequence protocol

@@ -86,7 +86,7 @@
       <enum-type name="ErrorType"/>
     </value-type>
     <object-type name="QDBusInterface" qt-metaobject="no">
-      <inject-documentation format="target" mode="append">
+      <inject-documentation format="target" mode="append" emphasis="language-note">
         DBus signals can be captured with string-based connections
         (see :ref:`signals-and-slots-strings`).
       </inject-documentation>
@@ -107,7 +107,7 @@
       <enum-type name="WatchModeFlag" flags="WatchMode"/>
     </object-type>
     <object-type name="QDBusSignature"/>
-    <object-type name="QDBusUnixFileDescriptor"/>
+    <value-type name="QDBusUnixFileDescriptor"/>
     <value-type name="QDBusVariant"/>
     <object-type name="QDBusVirtualObject"/>
     <suppress-warning text='^.*Unable to translate type "QDBusReply&lt;.*$'/>

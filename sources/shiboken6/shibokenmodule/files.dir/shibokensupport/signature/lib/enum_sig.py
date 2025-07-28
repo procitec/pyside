@@ -15,8 +15,9 @@ by producing a lot of clarity.
 import inspect
 import sys
 import types
-import typing
+import collections
 from shibokensupport.signature import get_signature as get_sig
+from shibokensupport.signature.layout import DEFAULT_PARAM_KIND
 from enum import Enum
 
 
@@ -43,7 +44,16 @@ def signal_check(thing):
     return thing and type(thing) in (Signal, SignalInstance)
 
 
-class ExactEnumerator(object):
+def is_inconsistent_overload(signatures):
+    if not isinstance(signatures, list):
+        return False
+    count = 0
+    for sig in signatures:
+        count += 1 if "self" in sig.parameters else 0
+    return count != 0 and count != len(signatures)
+
+
+class ExactEnumerator:
     """
     ExactEnumerator enumerates all signatures in a module as they are.
 
@@ -133,7 +143,7 @@ class ExactEnumerator(object):
                 name = base.__module__ + "." + name
             bases_list.append(name)
         bases_str = ', '.join(bases_list)
-        class_str = f"{class_name}({bases_str})"
+        class_str = f"{class_name}" if bases_str == "object" else f"{class_name}({bases_str})"
         # class_members = inspect.getmembers(klass)
         # gives us also the inherited things.
         class_members = sorted(list(klass.__dict__.items()))
@@ -194,7 +204,7 @@ class ExactEnumerator(object):
         #    class QCborTag(enum.IntEnum):
         #  or
         #    class BeginFrameFlag(enum.Flag):
-        if isinstance(klass, type(Enum)):
+        if issubclass(klass, Enum):
             init_signature = None
         # sort by class then enum value
         enums.sort(key=lambda tup: (tup[1], tup[2].value))
@@ -208,6 +218,9 @@ class ExactEnumerator(object):
                                   init_signature or signals or attributes)
 
         has_misc_error = class_name in self.mypy_misc_class_errors
+        if issubclass(klass, Enum) and not len(enums):
+            # PYSIDE-2846: We keep the empty enum and ignore the error.
+            has_misc_error = True
         with self.fmt.klass(class_name, class_str, has_misc_error):
             self.fmt.level += 1
             self.fmt.class_name = class_name
@@ -266,15 +279,18 @@ class ExactEnumerator(object):
         if decorator in self.collision_track:
             decorator = f"builtins.{decorator}"
         signature = self.get_signature(func, decorator)
+        incon_err = False
+        if is_inconsistent_overload(signature):
+            incon_err = True
         # PYSIDE-2846: Special cases of signatures which inherit from object.
-        _self = inspect.Parameter("self", inspect._POSITIONAL_OR_KEYWORD)
+        _self = inspect.Parameter("self", DEFAULT_PARAM_KIND)
         if func_name == "__dir__":
-            signature = inspect.Signature([_self], return_annotation=typing.Iterable[str])
+            signature = inspect.Signature([_self], return_annotation=collections.abc.Iterable[str])
         elif func_name == "__repr__":
             signature = inspect.Signature([_self], return_annotation=str)
         if signature is not None:
             aug_ass = func in self.mypy_aug_ass_errors
-            with self.fmt.function(func_name, signature, decorator, aug_ass) as key:
+            with self.fmt.function(func_name, signature, decorator, aug_ass, incon_err) as key:
                 ret[key] = signature
         del self.func
         return ret
@@ -329,8 +345,8 @@ class HintingEnumerator(ExactEnumerator):
     def __init__(self, *args, **kwds):
         super().__init__(*args, **kwds)
         # We need to provide default signatures for class properties.
-        cls_param = inspect.Parameter("cls", inspect._POSITIONAL_OR_KEYWORD)
-        set_param = inspect.Parameter("arg_1", inspect._POSITIONAL_OR_KEYWORD, annotation=object)
+        cls_param = inspect.Parameter("cls", DEFAULT_PARAM_KIND)
+        set_param = inspect.Parameter("arg_1", DEFAULT_PARAM_KIND, annotation=object)
         self.getter_sig = inspect.Signature([cls_param], return_annotation=object)
         self.setter_sig = inspect.Signature([cls_param, set_param])
         self.deleter_sig = inspect.Signature([cls_param])

@@ -6,6 +6,7 @@
 #include "abstractmetafield.h"
 #include "abstractmetafunction.h"
 #include "abstractmetalang.h"
+#include "include.h"
 #include "modifications.h"
 #include "sourcelocation.h"
 #include "typedatabase.h"
@@ -21,6 +22,9 @@
 #include <QtCore/QFile>
 #include <QtCore/QStringList>
 #include <QtCore/QXmlStreamReader>
+
+#include <algorithm>
+#include <iterator>
 
 using namespace Qt::StringLiterals;
 
@@ -899,15 +903,6 @@ QString msgCannotFindView(const QString &viewedName, const QString &name)
         + u" for "_s + name;
 }
 
-QString msgCannotFindSnippet(const QString &file, const QString &snippetLabel)
-{
-    QString result;
-    QTextStream str(&result);
-    str << "Cannot find snippet \"" << snippetLabel << "\" in "
-        << QDir::toNativeSeparators(file) << '.';
-    return result;
-}
-
 QString msgSnippetError(const QString &context, const char *what)
 {
     return "Error processing code snippet of "_L1 + context
@@ -1033,4 +1028,36 @@ QString msgCannotCopy(const QFile &source, const QString &target)
     return "Cannot copy "_L1 + QDir::toNativeSeparators(source.fileName())
         + " to "_L1 + QDir::toNativeSeparators(target)
         + ": "_L1 + source.errorString();
+}
+
+QString msgCannotFindQDocFile(const AbstractMetaClassCPtr &metaClass,
+                              const QStringList &candidates)
+{
+    QStringList nativeCandidates;
+    std::transform(candidates.cbegin(), candidates.cend(), std::back_inserter(nativeCandidates),
+                   QDir::toNativeSeparators);
+    QString result;
+    QTextStream(&result) << "Cannot find qdoc file for "
+        << (metaClass->isNamespace() ? "namespace" : "class") << " \""
+        << metaClass->typeEntry()->qualifiedCppName() << "\" ("
+        << QDir::toNativeSeparators(metaClass->typeEntry()->include().name())
+        << "), tried: " << nativeCandidates.join(", "_L1);
+    return result;
+}
+
+QString msgCannotCall(const AbstractMetaFunctionCPtr &func,
+                      int arg, bool injectCodeCallsFunc, bool hasConversionRule)
+{
+    QString result;
+    QTextStream str(&result);
+    str << "No way to generate a binding call for \"" << func->ownerClass()->name() << "::"
+        << func->signature() << '"';
+    if (func->isUserAdded())
+        str << " (user added)";
+    str << " with the modifications for argument " << (arg + 1) << ':';
+    if (!injectCodeCallsFunc)
+        str << " There is no code injection calling the function.";
+    if (!hasConversionRule)
+        str << " There is no conversion rule.";
+    return result;
 }

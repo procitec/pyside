@@ -117,14 +117,21 @@ macro(shiboken_internal_set_python_site_packages)
     else()
         execute_process(
             COMMAND ${Python_EXECUTABLE} -c "if True:
+                import sys
                 import sysconfig
                 from os.path import sep
 
                 # /home/qt/dev/env/lib/python3.9/site-packages
-                lib_path = sysconfig.get_path('purelib')
+                if sys.platform == 'win32':
+                    lib_path = sysconfig.get_path('purelib')
+                else:
+                    lib_path = sysconfig.get_path('purelib', scheme='posix_prefix')
 
                 # /home/qt/dev/env
-                data_path = sysconfig.get_path('data')
+                if sys.platform == 'win32':
+                    data_path = sysconfig.get_path('data')
+                else:
+                    data_path = sysconfig.get_path('data', scheme='posix_prefix')
 
                 # /lib/python3.9/site-packages
                 rel_path = lib_path.replace(data_path, '')
@@ -169,8 +176,18 @@ macro(setup_clang)
 
     find_package(Clang CONFIG REQUIRED)
     # Need to explicitly handle the version check, because the Clang package doesn't.
-    if (LLVM_PACKAGE_VERSION AND LLVM_PACKAGE_VERSION VERSION_LESS "9.0")
-        message(FATAL_ERROR "You need LLVM version 9.0 or greater to build.")
+    set(REQUIRED_LLVM "18.0")
+
+    if (LLVM_PACKAGE_VERSION AND LLVM_PACKAGE_VERSION VERSION_LESS "${REQUIRED_LLVM}")
+        message(WARNING "You need LLVM version ${REQUIRED_LLVM} or greater to build PySide "
+            "without issues, and ${LLVM_PACKAGE_VERSION} was found. "
+            "A lower version might case problems, specially on Windows.")
+        # Exception to enable Yocto builds (Kirkstone) - 6.8.x
+        set(REQUIRED_LLVM "14.0")
+        if (LLVM_PACKAGE_VERSION AND LLVM_PACKAGE_VERSION VERSION_LESS "${REQUIRED_LLVM}")
+            message(FATAL_ERROR "Using a LLVM version ${REQUIRED_LLVM} is the minimum allowed "
+                "to work pyside in some systems, however ${LLVM_PACKAGE_VERSION} was found.")
+        endif()
     endif()
 
     # CLANG_LIBRARY is read out from the cmake cache to deploy libclang
@@ -341,9 +358,9 @@ macro(shiboken_find_required_python)
 endmacro()
 
 macro(shiboken_validate_python_version)
-    if(Python_VERSION_MAJOR EQUAL "3" AND Python_VERSION_MINOR LESS "7")
+    if(Python_VERSION_MAJOR EQUAL "3" AND Python_VERSION_MINOR LESS "8")
             message(FATAL_ERROR
-                   "Shiboken requires Python 3.7+.")
+                   "Shiboken requires Python 3.8+.")
     endif()
 endmacro()
 

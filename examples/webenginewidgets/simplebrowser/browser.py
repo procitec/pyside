@@ -20,25 +20,26 @@ class Browser(QObject):
 
         # Quit application if the download manager window is the only
         # remaining window
-        self._download_manager_widget.setAttribute(Qt.WA_QuitOnClose, False)
-
-        dp = QWebEngineProfile.defaultProfile()
-        dp.downloadRequested.connect(self._download_manager_widget.download_requested)
+        self._download_manager_widget.setAttribute(Qt.WidgetAttribute.WA_QuitOnClose, False)
 
     def create_hidden_window(self, offTheRecord=False):
         if not offTheRecord and not self._profile:
             name = "simplebrowser." + qWebEngineChromiumVersion()
             self._profile = QWebEngineProfile(name)
             s = self._profile.settings()
-            s.setAttribute(QWebEngineSettings.PluginsEnabled, True)
-            s.setAttribute(QWebEngineSettings.DnsPrefetchEnabled, True)
-            s.setAttribute(QWebEngineSettings.LocalContentCanAccessRemoteUrls, True)
-            s.setAttribute(QWebEngineSettings.LocalContentCanAccessFileUrls, False)
+            s.setAttribute(QWebEngineSettings.WebAttribute.PluginsEnabled, True)
+            s.setAttribute(QWebEngineSettings.WebAttribute.DnsPrefetchEnabled, True)
+            s.setAttribute(QWebEngineSettings.WebAttribute.LocalContentCanAccessRemoteUrls, True)
+            s.setAttribute(QWebEngineSettings.WebAttribute.LocalContentCanAccessFileUrls, False)
+            s.setAttribute(QWebEngineSettings.ScreenCaptureEnabled, True)
             self._profile.downloadRequested.connect(
                 self._download_manager_widget.download_requested)
 
         profile = QWebEngineProfile.defaultProfile() if offTheRecord else self._profile
         main_window = BrowserWindow(self, profile, False)
+        profile.setPersistentPermissionsPolicy(
+            QWebEngineProfile.PersistentPermissionsPolicy.AskEveryTime)
+
         self._windows.append(main_window)
         main_window.about_to_close.connect(self._remove_window)
         return main_window

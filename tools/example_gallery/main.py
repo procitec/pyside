@@ -24,6 +24,7 @@ from dataclasses import dataclass
 from enum import IntEnum, Enum
 from pathlib import Path
 from textwrap import dedent
+from collections import defaultdict
 
 
 class Format(Enum):
@@ -81,6 +82,16 @@ Examples
  directory.
 
 """
+
+
+def tutorial_headline(path: str):
+    if "tutorials/extending-qml/chapter" in path:
+        return "Tutorial: Writing QML Extensions with Python"
+    if "tutorials/extending-qml-advanced/advanced" in path:
+        return "Tutorial: Writing advanced QML Extensions with Python"
+    if "tutorials/finance_manager" in path:
+        return "Tutorial: Finance Manager - Integrating PySide6 with SQLAlchemy and FastAPI"
+    return ""
 
 
 def ind(x):
@@ -206,6 +217,7 @@ class ExampleData:
     has_doc: bool
     img_doc: Path
     headline: str
+    tutorial: str
 
 
 def get_module_gallery(examples):
@@ -215,8 +227,8 @@ def get_module_gallery(examples):
     """
 
     gallery = (
-        ".. grid:: 1 4 4 4\n"
-        f"{ind(1)}:gutter: 2\n\n"
+        f"{ind(1)}.. grid:: 1 3 3 3\n"
+        f"{ind(2)}:gutter: 3\n\n"
     )
 
     # Iteration per rows
@@ -245,16 +257,94 @@ def get_module_gallery(examples):
         elif name.startswith("advanced"):
             name = name.replace("advanced", "a")
 
-        desc = e.headline
-        if not desc:
-            desc = f"found in the ``{underline}`` directory."
+        # Handling description from original file
+        desc = ""
+        original_dir = Path(e.abs_path) / "doc"
 
-        gallery += f"{ind(1)}.. grid-item-card:: {name}\n"
-        gallery += f"{ind(2)}:class-item: cover-img\n"
-        gallery += f"{ind(2)}:link: {doc_file_name}\n"
-        gallery += f"{ind(2)}:link-type: ref\n"
-        gallery += f"{ind(2)}:img-top: {img_name}\n\n"
-        gallery += f"{ind(2)}{desc}\n"
+        if e.has_doc:
+            # cannot use e.doc_file because that is the target file name
+            # so finding the original file by the name
+            original_file = (next(original_dir.glob("*.rst"), None)
+                             or next(original_dir.glob("*.md"), None))
+            if not original_file:
+                # ideally won't reach here because has_doc is True
+                print(f"example_gallery: No .rst or .md file found in {original_dir}")
+                continue
+
+            with original_file.open("r") as f:
+                # Read the first line
+                first_line = f.readline().strip()
+
+                # Check if the first line is a reference (starts with '(' and ends with ')=' for MD,
+                # or starts with '.. ' and ends with '::' for RST)
+                if ((e.file_format == Format.MD and first_line.startswith('(')
+                     and first_line.endswith(')='))
+                    or (e.file_format == Format.RST and first_line.startswith('.. ')
+                        and first_line.endswith('::'))):
+                    # The first line is a reference, so read the next lines until a non-empty line
+                    # is found
+                    while True:
+                        title_line = f.readline().strip()
+                        if title_line:
+                            break
+                else:
+                    # The first line is the title
+                    title_line = first_line
+
+                # The next line handling depends on the file format
+                line = f.readline().strip()
+
+                if e.file_format == Format.MD:
+                    # For markdown, the second line is the empty line
+                    if line != "":
+                        # If the line is not empty, raise a runtime error
+                        raise RuntimeError(f"Unexpected line: {line} in {original_file}. "
+                                           "Needs handling.")
+                else:
+                    # For RST and other formats
+                    # The second line is the underline under the title
+                    _ = line
+                    # The next line should be empty
+                    line = f.readline().strip()
+                    if line != "":
+                        raise RuntimeError(f"Unexpected line: {line} in {original_file}. "
+                                           "Needs handling.")
+
+                # Now read until another empty line
+                lines = []
+                while True:
+                    line = f.readline().strip()
+                    if line.startswith(".. tags") or line.startswith("#"):
+                        # Skip the empty line
+                        _ = f.readline()
+                        # Read the next line
+                        line = f.readline().strip()
+
+                    if not line:
+                        break
+                    lines.append(line)
+
+                desc = " ".join(lines)
+                if len(desc) > 120:
+                    desc = desc[:120] + "..."
+        else:
+            print(f"example_gallery: No .rst or .md file found in {original_dir}")
+
+        title = e.headline
+        if not title:
+            title = f"{name} from ``{underline}``."
+
+        # Clean refs from desc
+        if ":ref:" in desc:
+            desc = desc.replace(":ref:`", "")
+        desc = desc.replace("`", "")
+
+        gallery += f"{ind(2)}.. grid-item-card:: {title}\n"
+        gallery += f"{ind(3)}:class-item: cover-img\n"
+        gallery += f"{ind(3)}:link: {doc_file_name}\n"
+        gallery += f"{ind(3)}:link-type: ref\n"
+        gallery += f"{ind(3)}:img-top: {img_name}\n\n"
+        gallery += f"{ind(3)}+++\n{ind(3)}{desc}\n"
 
     return f"{gallery}\n"
 
@@ -474,6 +564,10 @@ def detect_pyside_example(example_root, pyproject_file):
     p = ExampleParameters()
 
     p.example_dir = pyproject_file.parent
+    if list(p.example_dir.parent.glob("*.qmlproject")) and p.example_dir.name == "Python":
+        # Design Studio project example
+        p.example_dir = pyproject_file.parent.parent
+
     if p.example_dir.name == "doc":  # Dummy pyproject in doc dir (scriptableapplication)
         p.example_dir = p.example_dir.parent
 
@@ -537,6 +631,7 @@ def write_example(example_root, pyproject_file, pyside_example=True):
     result.abs_path = str(p.example_dir)
     result.has_doc = bool(p.src_doc_file_path)
     result.img_doc = p.src_screenshot
+    result.tutorial = tutorial_headline(result.abs_path)
 
     files = []
     try:
@@ -607,8 +702,13 @@ def write_example(example_root, pyproject_file, pyside_example=True):
 
 
 def example_sort_key(example: ExampleData):
-    name = example.example
-    return "AAA" + name if "gallery" in name else name
+    result = ""
+    if example.tutorial:
+        result += "AA:" + example.tutorial + ":"
+    elif "gallery" in example.example:
+        result += "AB:"
+    result += example.example
+    return result
 
 
 def sort_examples(example):
@@ -693,12 +793,32 @@ if __name__ == "__main__":
         f.write(BASE_CONTENT)
         for module_name in sorted(examples.keys(), key=module_sort_key):
             e = examples.get(module_name)
-            for i in e:
-                index_files.append(i.doc_file)
+            tutorial_examples = defaultdict(list)
+            non_tutorial_examples = []
+
+            for example in e:
+                index_files.append(example.doc_file)
+                if example.tutorial:
+                    tutorial_examples[example.tutorial].append(example)
+                else:
+                    non_tutorial_examples.append(example)
+
             title = module_title(module_name)
-            f.write(f"{title}\n")
-            f.write(f"{'*' * len(title)}\n")
-            f.write(get_module_gallery(e))
+            f.write(f".. dropdown:: {title}\n\n")
+
+            # Write tutorial examples under their tutorial names
+            for tutorial_name, tutorial_exs in tutorial_examples.items():
+                f.write(f"{ind(1)}**{tutorial_name}**\n\n")
+                f.write(get_module_gallery(tutorial_exs))
+
+            # If there are non-tutorial examples and tutorials exist
+            if tutorial_examples and non_tutorial_examples:
+                f.write(f"{ind(1)}**Other Examples**\n\n")
+                f.write(get_module_gallery(non_tutorial_examples))
+            # If no tutorials exist, list all examples
+            elif not tutorial_examples:
+                f.write(get_module_gallery(e))
+
         f.write("\n\n")
         f.write(footer_index)
         for i in index_files:

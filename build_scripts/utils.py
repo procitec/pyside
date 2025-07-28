@@ -12,7 +12,8 @@ import stat
 import subprocess
 import sys
 import tempfile
-import urllib.request as urllib
+import urllib.request
+import urllib.error
 from collections import defaultdict
 from pathlib import Path
 from textwrap import dedent, indent
@@ -28,6 +29,15 @@ except NameError:
     WindowsError = None
 
 
+class Singleton(type):
+    _instances = {}
+
+    def __call__(cls, *args, **kwargs):
+        if cls not in cls._instances:
+            cls._instances[cls] = super().__call__(*args, **kwargs)
+        return cls._instances[cls]
+
+
 def which(name):
     """
     Like shutil.which, but accepts a string or a PathLike and returns a Path
@@ -37,9 +47,8 @@ def which(name):
         if isinstance(name, Path):
             name = str(name)
         path = shutil.which(name)
-        if path is None:
-            raise TypeError("None was returned")
-        path = Path(path)
+        if path is not None:
+            path = Path(path)
     except TypeError as e:
         log.error(f"{name} was not found in PATH: {e}")
     return path
@@ -518,9 +527,9 @@ def download_and_extract_7z(fileurl, target):
     for i in range(1, 10):
         try:
             log.info(f"Downloading fileUrl {fileurl}, attempt #{i}")
-            localfile, info = urllib.urlretrieve(fileurl)
+            localfile, info = urllib.request.urlretrieve(fileurl)
             break
-        except urllib.URLError:
+        except urllib.error.URLError:
             pass
     if not localfile:
         log.error(f"Error downloading {fileurl} : {info}")
@@ -1115,4 +1124,15 @@ def copy_qt_metatypes(destination_qt_dir, _vars):
 
 
 def in_coin():
-    return os.environ.get('COIN_LAUNCH_PARAMETERS', None) is not None
+    return os.environ.get('COIN_UNIQUE_JOB_ID', None) is not None
+
+
+def parse_modules(modules: str) -> str:
+    module_sub_set = ""
+    for m in modules.split(','):
+        if m.startswith('Qt'):
+            m = m[2:]
+        if module_sub_set:
+            module_sub_set += ';'
+        module_sub_set += m
+    return module_sub_set

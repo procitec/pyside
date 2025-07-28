@@ -30,7 +30,7 @@ from shibokensupport.signature.lib.tool import build_brace_pattern
 indent = " " * 4
 
 
-class Writer(object):
+class Writer:
     def __init__(self, outfile, *args):
         self.outfile = outfile
         self.history = [True, True]
@@ -103,6 +103,16 @@ class Formatter(Writer):
     split = brace_searcher.split
 
     @classmethod
+    def last_fixups(cls, source):
+        # PYSIDE-2517: findChild/findChildren type hints:
+        # PlaceHolderType fix to avoid the '~' from TypeVar.__repr__
+        if "~PlaceHolderType" in source:
+            source = source.replace("~PlaceHolderType", "PlaceHolderType")
+        # Replace all "NoneType" strings by "None" which is a typing convention.
+        return source.replace("NoneType", "None")
+
+    # To be removed when minimum version is 3.10:
+    @classmethod
     def optional_replacer(cls, source):
         # PYSIDE-2517: findChild/findChildren type hints:
         # PlaceHolderType fix to avoid the '~' from TypeVar.__repr__
@@ -117,11 +127,14 @@ class Formatter(Writer):
             # Note: this list is interspersed with "," and surrounded by "", see parser.py
             parts = [x.strip() for x in cls.split(body) if x.strip() not in ("", ",")]
             if name == "typing.Optional":
-                parts.append("None")
+                parts.append("None ")
             res = " | ".join(parts)
             source = source[: start] + res + source[end :]
         # Replace all "NoneType" strings by "None" which is a typing convention.
         return source.replace("NoneType", "None")
+
+    if sys.version_info[:2] < (3, 10):
+        last_fixups = optional_replacer
 
     # self.level is maintained by enum_sig.py
     # self.is_method() is true for non-plain functions.
@@ -157,22 +170,25 @@ class Formatter(Writer):
         yield
 
     @contextmanager
-    def function(self, func_name, signature, decorator=None, aug_ass=None):
+    def function(self, func_name, signature, decorator=None, aug_ass=None, incon_err=None):
         if func_name == "__init__":
             self.print()
         key = func_name
         spaces = indent * self.level
         err_ignore = "  # type: ignore[misc]"
+        if incon_err:
+            err_ignore = "  # type: ignore[misc, overload-cannot-match]"
         if isinstance(signature, list):
-            # PYSIDE-2846: mypy does not handle inconsistent static methods
-            #              in overload chains. Check this and disable the error.
-            #              Also disable errors in augmented assignments.
-            opt_comment = (err_ignore if is_inconsistent_overload(self, signature)
-                           or aug_ass else "")
+            # PYSIDE-2846: Disable errors in augmented assignments.
+            opt_comment = (err_ignore if aug_ass or incon_err else "")
             for sig in signature:
                 self.print(f'{spaces}@typing.overload{opt_comment}')
-                opt_comment = ""
-                self._function(func_name, sig, spaces)
+                if incon_err:
+                    # need to mark all overloads
+                    pass
+                else:
+                    opt_comment = ""
+                self._function(func_name, sig, spaces, None, opt_comment)
         else:
             opt_comment = err_ignore if aug_ass else ""
             self._function(func_name, signature, spaces, decorator, opt_comment)
@@ -190,7 +206,7 @@ class Formatter(Writer):
         # the formatting with the inspect module explicitly removes the `typing` prefix.
         signature = self.fix_typing_prefix(signature)
         # from now on, the signature will be stringized.
-        signature = self.optional_replacer(signature)
+        signature = self.last_fixups(signature)
         self.print(f'{spaces}def {func_name}{signature}: ...{opt_comment}')
 
     @contextmanager
@@ -215,13 +231,6 @@ class Formatter(Writer):
         yield
 
 
-def is_inconsistent_overload(self, signatures):
-    count = 0
-    for sig in signatures:
-        count += 1 if self.is_method() and "self" not in sig.parameters else 0
-    return count != 0 and count != len(signatures)
-
-
 def find_imports(text):
     return [imp for imp in PySide6.__all__ if f"PySide6.{imp}." in text]
 
@@ -231,7 +240,7 @@ FROM_IMPORTS = [
     (None, ["os"]),
     (None, ["enum"]),
     (None, ["typing"]),
-    ("collections.abc", ["Iterable"]),
+    (None, ["collections"]),
     ("PySide6.QtCore", ["PyClassProperty", "Signal", "SignalInstance"]),
     ("shiboken6", ["Shiboken"]),
     ]
@@ -248,7 +257,7 @@ def filter_from_imports(from_struct, text):
         for each in imports:
             # PYSIDE-1603: We search text that is a usage of the class `each`,
             #              but only if the class is not also defined here.
-            if (f"class {each}(") not in text:
+            if f"class {each}(" not in text and f"class {each}:" not in text:
                 if re.search(rf"(\b|@){each}\b([^\s\(:]|\n)", text):
                     lis.append(each)
                 # Search if a type is present in the return statement

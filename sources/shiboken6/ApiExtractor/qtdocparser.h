@@ -5,8 +5,10 @@
 #define QTDOCPARSER_H
 
 #include "docparser.h"
+#include <optional>
 
 struct ClassDocumentation;
+struct FunctionDocumentation;
 
 class QtDocParser : public DocParser
 {
@@ -16,23 +18,23 @@ public:
     void fillGlobalFunctionDocumentation(const AbstractMetaFunctionPtr &f) override;
     void fillGlobalEnumDocumentation(AbstractMetaEnum &e) override;
 
-    Documentation retrieveModuleDocumentation() override;
-    Documentation retrieveModuleDocumentation(const QString& name) override;
+    ModuleDocumentation retrieveModuleDocumentation(const QString &name) override;
 
     static QString qdocModuleDir(const QString &pythonType);
 
 private:
-    static QString functionDocumentation(const QString &sourceFileName,
-                                         const ClassDocumentation &classDocumentation,
-                                         const AbstractMetaClassCPtr &metaClass,
-                                         const AbstractMetaFunctionCPtr &func,
-                                         QString *errorMessage);
+    using FunctionDocumentationOpt = std::optional<FunctionDocumentation>;
 
-    static QString queryFunctionDocumentation(const QString &sourceFileName,
-                                              const ClassDocumentation &classDocumentation,
-                                              const AbstractMetaClassCPtr &metaClass,
-                                              const AbstractMetaFunctionCPtr &func,
-                                              QString *errorMessage);
+    static FunctionDocumentationOpt
+         functionDocumentation(const QString &sourceFileName,
+                               const ClassDocumentation &classDocumentation,
+                               const AbstractMetaClassCPtr &metaClass,
+                               const AbstractMetaFunctionCPtr &func, QString *errorMessage);
+    static FunctionDocumentationOpt
+        queryFunctionDocumentation(const QString &sourceFileName,
+                                   const ClassDocumentation &classDocumentation,
+                                   const AbstractMetaClassCPtr &metaClass,
+                                   const AbstractMetaFunctionCPtr &func, QString *errorMessage);
     static bool extractEnumDocumentation(const ClassDocumentation &classDocumentation,
                                          const QString &sourceFileName,
                                          AbstractMetaEnum &meta_enum);
@@ -40,4 +42,3 @@ private:
 };
 
 #endif // QTDOCPARSER_H
-

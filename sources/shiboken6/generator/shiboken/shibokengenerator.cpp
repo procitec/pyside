@@ -107,7 +107,7 @@ struct GeneratorClassInfoCacheEntry
     ShibokenGenerator::FunctionGroups functionGroups;
     QList<AbstractMetaFunctionCList> numberProtocolOperators;
     BoolCastFunctionOptional boolCastFunctionO;
-    bool needsGetattroFunction = false;
+    ShibokenGenerator::AttroCheck attroCheck;
 };
 
 using GeneratorClassInfoCache = QHash<AbstractMetaClassCPtr, GeneratorClassInfoCacheEntry>;
@@ -412,28 +412,28 @@ QString ShibokenGenerator::protectedEnumSurrogateName(const AbstractMetaEnum &me
     return result + u"_Surrogate"_s;
 }
 
+QString ShibokenGenerator::cpythonConstructorName(const AbstractMetaClassCPtr &metaClass)
+{
+    return cpythonBaseName(metaClass->typeEntry()) + u"_Init"_s;
+}
+
 QString ShibokenGenerator::cpythonFunctionName(const AbstractMetaFunctionCPtr &func)
 {
-    QString result;
+    if (func->isConstructor())
+        return cpythonConstructorName(func->implementingClass());
 
+    QString result;
     // PYSIDE-331: For inherited functions, we need to find the same labels.
     // Therefore we use the implementing class.
     if (func->implementingClass()) {
-        result = cpythonBaseName(func->implementingClass()->typeEntry());
-        if (func->isConstructor()) {
-            result += u"_Init"_s;
-        } else {
-            result += u"Func_"_s;
-            if (func->isOperatorOverload())
-                result += ShibokenGenerator::pythonOperatorFunctionName(func);
-            else
-                result += func->name();
-        }
-    } else {
-        result = u"Sbk"_s + moduleName() + u"Module_"_s + func->name();
+        return cpythonBaseName(func->implementingClass()->typeEntry())
+            + u"Func_"_s
+            + (func->isOperatorOverload()
+               ? ShibokenGenerator::pythonOperatorFunctionName(func)
+               : func->name());
     }
 
-    return result;
+    return u"Sbk"_s + moduleName() + u"Module_"_s + func->name();
 }
 
 QString ShibokenGenerator::cpythonMethodDefinitionName(const AbstractMetaFunctionCPtr &func)
@@ -1192,14 +1192,15 @@ QString ShibokenGenerator::functionReturnType(const AbstractMetaFunctionCPtr &fu
 }
 
 QString ShibokenGenerator::functionSignature(const AbstractMetaFunctionCPtr &func,
-                                             const QString &prepend,
+                                             const QString &className,
                                              const QString &append,
                                              Options options,
                                              int /* argCount */) const
 {
     StringStream s(TextStream::Language::Cpp);
     // The actual function
-    if (!options.testFlag(Option::SkipDefaultValues) && func->isStatic()) // Declaration
+    const bool isDeclaration = !options.testFlag(Option::SkipDefaultValues);
+    if (isDeclaration && func->isStatic())
         s << "static ";
     if (func->isEmptyFunction() || func->needsReturnType())
         s << functionReturnType(func, options) << ' ';
@@ -1211,7 +1212,9 @@ QString ShibokenGenerator::functionSignature(const AbstractMetaFunctionCPtr &fun
     if (func->isConstructor())
         name = wrapperName(func->ownerClass());
 
-    s << prepend << name << append << '(';
+    if (!isDeclaration && !className.isEmpty())
+        s << className << "::";
+    s << name << append << '(';
     writeFunctionArguments(s, func, options);
     s << ')';
 
@@ -1337,7 +1340,7 @@ QString ShibokenGenerator::getCodeSnippets(const CodeSnipList &codeSnips,
 
 void ShibokenGenerator::processClassCodeSnip(QString &code, const GeneratorContext &context) const
 {
-    auto metaClass = context.metaClass();
+    const auto &metaClass = context.metaClass();
     // Replace template variable by the Python Type object
     // for the class context in which the variable is used.
     code.replace(u"%PYTHONTYPEOBJECT"_s,
@@ -1857,48 +1860,56 @@ bool ShibokenGenerator::injectedCodeCallsCppFunction(const GeneratorContext &con
 
 bool ShibokenGenerator::useOverrideCaching(const AbstractMetaClassCPtr &metaClass)
 {
-    return metaClass->isPolymorphic();
+    return checkAttroFunctionNeeds(metaClass).testFlag(AttroCheckFlag::SetattroMethodOverride);
 }
 
-ShibokenGenerator::AttroCheck ShibokenGenerator::checkAttroFunctionNeeds(
-    const AbstractMetaClassCPtr &metaClass)
+bool ShibokenGenerator::isVirtualOverride(const AbstractMetaFunctionCPtr &f)
 {
-    AttroCheck result;
+    return f->isVirtual() && !f->isDestructor() &&
+        ShibokenGenerator::functionGeneration(f).testFlag(FunctionGenerationFlag::VirtualMethod);
+}
+
+ShibokenGenerator::AttroCheck
+    ShibokenGenerator::checkAttroFunctionNeedsImpl(const AbstractMetaClassCPtr &metaClass,
+                                                   const FunctionGroups &functionGroups)
+{
     if (metaClass->typeEntry()->isSmartPointer()) {
-        result |= AttroCheckFlag::GetattroSmartPointer | AttroCheckFlag::SetattroSmartPointer;
-    } else {
-        if (getGeneratorClassInfo(metaClass).needsGetattroFunction)
-            result |= AttroCheckFlag::GetattroOverloads;
-        if (metaClass->queryFirstFunction(metaClass->functions(),
-                                          FunctionQueryOption::GetAttroFunction)) {
-            result |= AttroCheckFlag::GetattroUser;
-        }
-        if (usePySideExtensions() && metaClass->qualifiedCppName() == qObjectT)
-            result |= AttroCheckFlag::SetattroQObject;
-        if (useOverrideCaching(metaClass))
+        return AttroCheck(AttroCheckFlag::GetattroSmartPointer
+                          | AttroCheckFlag::SetattroSmartPointer);
+    }
+
+    AttroCheck result;
+    if (classNeedsGetattroOverloadFunctionImpl(functionGroups))
+        result |= AttroCheckFlag::GetattroOverloads;
+    if (AbstractMetaClass::queryFirstFunction(metaClass->functions(),
+                                              FunctionQueryOption::GetAttroFunction)) {
+        result |= AttroCheckFlag::GetattroUser;
+    }
+    if (usePySideExtensions() && metaClass->qualifiedCppName() == qObjectT)
+        result |= AttroCheckFlag::SetattroQObject;
+    if (metaClass->isPolymorphic()) {
+        const auto &funcs = metaClass->functions();
+        if (std::any_of(funcs.cbegin(), funcs.cend(), isVirtualOverride))
             result |= AttroCheckFlag::SetattroMethodOverride;
-        if (metaClass->queryFirstFunction(metaClass->functions(),
-                                          FunctionQueryOption::SetAttroFunction)) {
-            result |= AttroCheckFlag::SetattroUser;
-        }
-        // PYSIDE-1255: If setattro is generated for a class inheriting
-        // QObject, the property code needs to be generated, too.
-        if ((result & AttroCheckFlag::SetattroMask) != 0
-            && !result.testFlag(AttroCheckFlag::SetattroQObject)
-            && isQObject(metaClass)) {
-            result |= AttroCheckFlag::SetattroQObject;
-        }
+    }
+    if (AbstractMetaClass::queryFirstFunction(metaClass->functions(),
+                                              FunctionQueryOption::SetAttroFunction)) {
+        result |= AttroCheckFlag::SetattroUser;
+    }
+    // PYSIDE-1255: If setattro is generated for a class inheriting
+    // QObject, the property code needs to be generated, too.
+    if ((result & AttroCheckFlag::SetattroMask) != 0
+        && !result.testFlag(AttroCheckFlag::SetattroQObject)
+        && isQObject(metaClass)) {
+        result |= AttroCheckFlag::SetattroQObject;
     }
     return result;
 }
 
-bool ShibokenGenerator::classNeedsGetattroFunctionImpl(const AbstractMetaClassCPtr &metaClass)
+// Returns whether a mixture of static and instance functions exists,
+// requiring a getattro function.
+bool ShibokenGenerator::classNeedsGetattroOverloadFunctionImpl(const FunctionGroups &functionGroup)
 {
-    if (!metaClass)
-        return false;
-    if (metaClass->typeEntry()->isSmartPointer())
-        return true;
-    const auto &functionGroup = getFunctionGroups(metaClass);
     for (auto it = functionGroup.cbegin(), end = functionGroup.cend(); it != end; ++it) {
         AbstractMetaFunctionCList overloads;
         for (const auto &func : std::as_const(it.value())) {
@@ -2053,7 +2064,7 @@ const GeneratorClassInfoCacheEntry &
         it = cache->insert(scope, {});
         auto &entry = it.value();
         entry.functionGroups = getFunctionGroupsImpl(scope);
-        entry.needsGetattroFunction = classNeedsGetattroFunctionImpl(scope);
+        entry.attroCheck = checkAttroFunctionNeedsImpl(scope, entry.functionGroups);
         entry.numberProtocolOperators = getNumberProtocolOperators(scope);
         entry.boolCastFunctionO = getBoolCast(scope);
     }
@@ -2078,6 +2089,13 @@ BoolCastFunctionOptional ShibokenGenerator::boolCast(const AbstractMetaClassCPtr
 {
     Q_ASSERT(scope);
     return getGeneratorClassInfo(scope).boolCastFunctionO;
+}
+
+ShibokenGenerator::AttroCheck
+    ShibokenGenerator::checkAttroFunctionNeeds(const AbstractMetaClassCPtr &scope)
+{
+    Q_ASSERT(scope);
+    return getGeneratorClassInfo(scope).attroCheck;
 }
 
 // Use non-const overloads only, for example, "foo()" and "foo()const"

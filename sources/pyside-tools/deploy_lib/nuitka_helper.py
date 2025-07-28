@@ -11,7 +11,8 @@ import shlex
 import sys
 from pathlib import Path
 
-from . import MAJOR_VERSION, DesignStudio, run_command, DEFAULT_IGNORE_DIRS
+from project_lib import DesignStudioProject
+from . import MAJOR_VERSION, run_command, DEFAULT_IGNORE_DIRS, PLUGINS_TO_REMOVE
 from .config import DesktopConfig
 
 
@@ -40,11 +41,7 @@ class Nuitka:
                                      "generic"  # plugins that error with Nuitka
                                      ]
 
-        # .webp are considered to be dlls by Nuitka instead of data files causing
-        # the packaging to fail
-        # https://github.com/Nuitka/Nuitka/issues/2854
-        # TODO: Remove .webp when the issue is fixed
-        self.files_to_ignore = [".cpp.o", ".qsb", ".webp"]
+        self.files_to_ignore = [".cpp.o", ".qsb"]
 
     @staticmethod
     def icon_option():
@@ -87,9 +84,8 @@ class Nuitka:
     def create_executable(self, source_file: Path, extra_args: str, qml_files: list[Path],
                           qt_plugins: list[str], excluded_qml_plugins: list[str], icon: str,
                           dry_run: bool, permissions: list[str],
-                          mode: DesktopConfig.NuitkaMode):
+                          mode: DesktopConfig.NuitkaMode) -> str:
         qt_plugins = [plugin for plugin in qt_plugins if plugin not in self.qt_plugins_to_ignore]
-
         extra_args = shlex.split(extra_args)
 
         # macOS uses the --standalone option by default to create an app bundle
@@ -104,36 +100,29 @@ class Nuitka:
 
         qml_args = []
         if qml_files:
-            if DesignStudio.isDSProject(source_file):
-                ds = DesignStudio(source_file)
-                # include all subdirectories of ds.project_directory as data directories
-                # this will contain all the qml files and other resources
-                for subdir in ds.project_dir.iterdir():
-                    if subdir.is_dir():
-                        extra_args.append(f"--include-data-dir={subdir}="
-                                          f"./{subdir.name}")
-            else:
-                # include all the subdirectories in the project directory as data directories
-                # This includes all the qml modules
-                all_relevant_subdirs = []
-                for subdir in source_file.parent.iterdir():
-                    if subdir.is_dir() and subdir.name not in DEFAULT_IGNORE_DIRS:
-                        extra_args.append(f"--include-data-dir={subdir}="
-                                          f"./{subdir.name}")
-                        all_relevant_subdirs.append(subdir)
+            # include all the subdirectories in the project directory as data directories
+            # This includes all the qml modules
+            all_relevant_subdirs = []
+            for subdir in source_file.parent.iterdir():
+                if subdir.is_dir() and subdir.name not in DEFAULT_IGNORE_DIRS:
+                    extra_args.append(f"--include-data-dir={subdir}="
+                                      f"./{subdir.name}")
+                    all_relevant_subdirs.append(subdir)
 
-                # find all the qml files that are not included via the data directories
-                extra_qml_files = [file for file in qml_files
-                                   if file.parent not in all_relevant_subdirs]
+            # find all the qml files that are not included via the data directories
+            extra_qml_files = [file for file in qml_files
+                               if file.parent not in all_relevant_subdirs]
 
-                # This will generate options for each file using:
-                #     --include-data-files=ABSOLUTE_PATH_TO_FILE=RELATIVE_PATH_TO ROOT
-                # for each file.
-                qml_args.extend(
-                    [f"--include-data-files={qml_file.resolve()}="
-                     f"./{qml_file.resolve().relative_to(source_file.resolve().parent)}"
-                     for qml_file in extra_qml_files]
-                )
+            # This will generate options for each file using:
+            #     --include-data-files=ABSOLUTE_PATH_TO_FILE=RELATIVE_PATH_TO ROOT
+            # for each file.
+            qml_args.extend(
+                [f"--include-data-files={qml_file.resolve()}="
+                    f"./{qml_file.resolve().relative_to(source_file.resolve().parent)}"
+                    for qml_file in extra_qml_files]
+            )
+
+        if qml_files or DesignStudioProject.is_ds_project(source_file):
             # add qml plugin. The `qml`` plugin name is not present in the module json files shipped
             # with Qt and hence not in `qt_plugins``. However, Nuitka uses the 'qml' plugin name to
             # include the necessary qml plugins. There we have to add it explicitly for a qml
@@ -170,6 +159,10 @@ class Nuitka:
         if qt_plugins:
             # sort qt_plugins so that the result is definitive when testing
             qt_plugins.sort()
+            # remove the following plugins from the qt_plugins list as Nuitka only checks
+            # for plugins within PySide6/Qt/plugins folder, and the following plugins
+            # are not present in the PySide6/Qt/plugins folder
+            qt_plugins = [plugin for plugin in qt_plugins if plugin not in PLUGINS_TO_REMOVE]
             qt_plugins_str = ",".join(qt_plugins)
             command.append(f"--include-qt-plugins={qt_plugins_str}")
 

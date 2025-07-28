@@ -215,7 +215,6 @@ QString msgIncorrectlyNestedName(const QString &name);
 
 QString msgCannotFindView(const QString &viewedName, const QString &name);
 
-QString msgCannotFindSnippet(const QString &file, const QString &snippetLabel);
 QString msgSnippetError(const QString &context, const char *what);
 QString msgUnableToResolveTypedef(const QString &sourceType, const QString &sourceName);
 
@@ -272,5 +271,11 @@ QString msgNotRelative(const QString &path, const QString &dir);
 QString msgCannotCreateDir(const QString &dir);
 
 QString msgCannotCopy(const QFile &source, const QString &target);
+
+QString msgCannotFindQDocFile(const AbstractMetaClassCPtr &metaClass,
+                              const QStringList &candidates);
+
+QString msgCannotCall(const AbstractMetaFunctionCPtr &func,
+                      int arg, bool injectCodeCallsFunc, bool hasConversionRule);
 
 #endif // MESSAGES_H

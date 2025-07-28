@@ -20,9 +20,8 @@ from helper.helper import quickview_errorstring
 
 from PySide6.QtCore import Qt, QUrl, QTimer
 from PySide6.QtGui import QGuiApplication, QPen
-from PySide6.QtWidgets import QGraphicsItem
 from PySide6.QtQml import qmlRegisterType
-from PySide6.QtQuick import QQuickView, QQuickItem, QQuickPaintedItem
+from PySide6.QtQuick import QQuickView, QQuickPaintedItem
 
 paintCalled = False
 
@@ -31,7 +30,7 @@ class MetaA(type):
     pass
 
 
-class A(object):
+class A:
     __metaclass__ = MetaA
 
 
@@ -53,7 +52,7 @@ class Bug825 (C):
 
     def paint(self, painter):
         global paintCalled
-        pen = QPen(Qt.black, 2)
+        pen = QPen(Qt.GlobalColor.black, 2)
         painter.setPen(pen)
         painter.drawPie(self.boundingRect(), 0, 128)
         paintCalled = True

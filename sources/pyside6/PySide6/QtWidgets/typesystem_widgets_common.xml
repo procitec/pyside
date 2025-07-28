@@ -30,8 +30,6 @@
     enum 'QGraphicsPolygonItem::Type' does not have a type entry or is not an enum
   """
   -->
-  <rejection class="QMdi"/>
-
   <function signature="qDrawShadeLine(QPainter*,int,int,int,int,const QPalette&amp;,bool,int,int)"/>
   <function signature="qDrawShadeLine(QPainter*,const QPoint,const QPoint,const QPalette&amp;,bool,int,int)"/>
   <function signature="qDrawShadeRect(QPainter*,int,int,int,int,const QPalette&amp;,bool,int,int,const QBrush*)"/>
@@ -1151,7 +1149,7 @@
     </modify-function>
   </object-type>
   <object-type name="QAbstractButton">
-    <add-function signature="setShortcut(Qt::Key)">
+    <add-function signature="setShortcut(Qt::Key@key@)">
       <inject-code file="../glue/qtgui.cpp" snippet="set-qtkey-shortcut"/>
     </add-function>
   </object-type>
@@ -1291,7 +1289,7 @@
         </inject-code>
     </modify-function>
 
-    <add-function signature="setAlignment(QFlags&lt;Qt::AlignmentFlag&gt;)">
+    <add-function signature="setAlignment(QFlags&lt;Qt::AlignmentFlag&gt;@alignment@)">
       <inject-code class="target" position="beginning" file="../glue/qtwidgets.cpp" snippet="qlayout-setalignment"/>
     </add-function>
 
@@ -1460,11 +1458,16 @@
         <modify-argument index="3">
             <replace-type modified-type="PySequence"/>
             <conversion-rule class="native">
-                <insert-template name="qgraphicsitem_pysequence"/>
+                <insert-template name="pysequence-to-c-array">
+                    <replace from="%TYPE" to="QGraphicsItem*"/>
+                </insert-template>
             </conversion-rule>
 
             <conversion-rule class="target">
-                <insert-template name="qgraphicsitem_pyobject"/>
+                <insert-template name="c-array-to-pysequence">
+                    <replace from="%TYPE" to="QGraphicsItem*"/>
+                    <replace from="%COUNT" to="numItems"/>
+                </insert-template>
             </conversion-rule>
         </modify-argument>
 
@@ -1954,7 +1957,7 @@
       </modify-argument>
     </modify-function>
     <modify-function signature="setItemWidget(QListWidgetItem*,QWidget*)" allow-thread="yes">
-      <modify-argument index="2">
+      <modify-argument index="2" pyi-type="Optional[PySide6.QtWidgets.QWidget]">
         <parent index="1" action="add"/>
       </modify-argument>
     </modify-function>
@@ -1999,9 +2002,8 @@
             <insert-template name="return_native_eventfilter_conversion"/>
         </conversion-rule>
       </modify-argument>
-      <inject-code position="end">
-          <insert-template name="return_native_eventfilter"/>
-      </inject-code>
+      <inject-code position="end"
+                   file="../glue/qtcore.cpp" snippet="return-native-eventfilter"/>
     </modify-function>
 
     <extra-includes>
@@ -2353,6 +2355,9 @@
       <modify-argument index="return">
         <replace-type modified-type="QString"/>
       </modify-argument>
+      <inject-code class="native" position="end">
+        <insert-template name="return_QString_native"/>
+      </inject-code>
       <inject-code class="target" position="end" file="../glue/qtcore.cpp" snippet="qstring-return"/>
     </modify-function>
     <modify-function signature="validate(QString &amp;,int &amp;)const">
@@ -2739,7 +2744,7 @@
     </modify-function>
     <modify-function signature="del()" rename="del_"/>
 
-    <add-function signature="addAction(QAction*)">
+    <add-function signature="addAction(QAction*@action@)">
       <inject-code class="target" position="beginning" file="../glue/qtwidgets.cpp" snippet="qlineedit-addaction"/>
     </add-function>
 
@@ -2903,7 +2908,7 @@
       <include file-name="pysidecleanup.h" location="global"/>
     </extra-includes>
     <modify-function signature="QApplication(int&amp;,char**,int)" access="private"/>
-    <add-function signature="QApplication(QStringList)">
+    <add-function signature="QApplication(QStringList@arguments@)">
         <inject-code file="../glue/qtwidgets.cpp" snippet="qapplication-1"/>
     </add-function>
     <add-function signature="QApplication()">

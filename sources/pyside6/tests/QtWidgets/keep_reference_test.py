@@ -84,9 +84,8 @@ class KeepReferenceTest(UsesQApplication):
             view.setModel(model)
         view = QTableView()
         createModelAndSetToView(view)
-        model = view.model()
+        model = view.model()  # noqa: F841
 
 
 if __name__ == '__main__':
     unittest.main()
-

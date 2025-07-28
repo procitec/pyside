@@ -117,7 +117,7 @@ def prepare_packages_win32(pyside_build, _vars):
             target = f"{{st_build_dir}}/{{st_package_name}}/scripts/{script}"
             copyfile(src, target, force=False, _vars=_vars)
 
-        for script_dir in ("qtpy2cpp_lib", "deploy_lib", "project"):
+        for script_dir in ("qtpy2cpp_lib", "deploy_lib", "project_lib"):
             src = f"{{install_dir}}/bin/{script_dir}"
             target = f"{{st_build_dir}}/{{st_package_name}}/scripts/{script_dir}"
             # Exclude subdirectory tests
@@ -196,7 +196,7 @@ def prepare_packages_win32(pyside_build, _vars):
         # shiboken module, because libshiboken uses C++ code.
         copy_msvc_redist_files(destination_dir)
 
-    if config.is_internal_shiboken_generator_build():
+    if config.is_internal_pyside_build() or config.is_internal_shiboken_generator_build():
         copy_qt_artifacts(pyside_build, destination_qt_dir, copy_pdbs, _vars)
         copy_msvc_redist_files(destination_dir)
 

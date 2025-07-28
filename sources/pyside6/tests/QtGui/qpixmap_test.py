@@ -17,6 +17,11 @@ from PySide6.QtCore import QFile, QIODevice, QObject, QSize, Qt
 
 
 class QPixmapTest(UsesQApplication):
+
+    def setUp(self):
+        super().setUp()
+        self._sample_file = Path(__file__).resolve().parent / 'sample.png'
+
     def testQVariantConstructor(self):
         obj = QObject()
         pixmap = QPixmap()
@@ -28,18 +33,19 @@ class QPixmapTest(UsesQApplication):
         self.assertTrue(pixmap.size().height(), 20)
 
     def testQStringConstructor(self):
-        pixmap = QPixmap("Testing!")
+        pixmap = QPixmap("Testing!")  # noqa: F841
 
     def testQPixmapLoadFromDataWithQFile(self):
-        f = QFile(os.path.join(os.path.dirname(__file__), 'sample.png'))
-        self.assertTrue(f.open(QIODevice.ReadOnly))
+        f = QFile(self._sample_file)
+        self.assertTrue(f.open(QIODevice.OpenModeFlag.ReadOnly))
         data = f.read(f.size())
         f.close()
         pixmap = QPixmap()
         self.assertTrue(pixmap.loadFromData(data))
 
     def testQPixmapLoadFromDataWithPython(self):
-        data = open(os.path.join(os.path.dirname(__file__), 'sample.png'), 'rb').read()
+        with self._sample_file.open('rb') as f:
+            data = f.read()
         pixmap = QPixmap()
         self.assertTrue(pixmap.loadFromData(data))
 
@@ -48,8 +54,9 @@ class QPixmapToImage(UsesQApplication):
 
     def testFilledImage(self):
         '''QPixmap.fill + toImage + image.pixel'''
+        red = QColor(Qt.GlobalColor.red)
         pixmap = QPixmap(100, 200)
-        pixmap.fill(Qt.red)  # Default Qt.white
+        pixmap.fill(red)  # Default Qt.GlobalColor.white
 
         self.assertEqual(pixmap.height(), 200)
         self.assertEqual(pixmap.width(), 100)
@@ -60,9 +67,8 @@ class QPixmapToImage(UsesQApplication):
         self.assertEqual(image.width(), 100)
 
         pixel = image.pixel(10, 10)
-        self.assertEqual(pixel, QColor(Qt.red).rgba())
+        self.assertEqual(pixel, red.rgba())
 
 
 if __name__ == '__main__':
     unittest.main()
-

@@ -28,7 +28,7 @@ class BuggyWidget(QWidget):
 
 class LayoutTransferOwnerShip(unittest.TestCase):
     def testBug(self):
-        app = QApplication([])
+        app = QApplication([])  # noqa: F841
         w = BuggyWidget()
         w.setup()
         w.show()
@@ -37,4 +37,3 @@ class LayoutTransferOwnerShip(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
-

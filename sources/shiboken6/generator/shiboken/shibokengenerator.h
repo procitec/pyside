@@ -165,8 +165,8 @@ protected:
      *   \param arg_count the number of function arguments
      */
     QString functionSignature(const AbstractMetaFunctionCPtr &func,
-                              const QString &prepend = QString(),
-                              const QString &append = QString(),
+                              const QString &className = {},
+                              const QString &append = {},
                               Options options = NoOption,
                               int arg_count = -1) const;
 
@@ -268,6 +268,7 @@ protected:
     static QString cpythonToPythonConversionFunction(const AbstractMetaClassCPtr &metaClass);
     static QString cpythonToPythonConversionFunction(const TypeEntryCPtr &type);
 
+    static QString cpythonConstructorName(const AbstractMetaClassCPtr &metaClass);
     static QString cpythonFunctionName(const AbstractMetaFunctionCPtr &func) ;
     static QString cpythonMethodDefinitionName(const AbstractMetaFunctionCPtr &func);
     static QString cpythonGettersSettersDefinitionName(const AbstractMetaClassCPtr &metaClass);
@@ -373,7 +374,10 @@ private:
     static QList<AbstractMetaFunctionCList>
         getNumberProtocolOperators(const AbstractMetaClassCPtr &metaClass);
     static BoolCastFunctionOptional getBoolCast(const AbstractMetaClassCPtr &metaClass);
-    static bool classNeedsGetattroFunctionImpl(const AbstractMetaClassCPtr &metaClass);
+    static bool classNeedsGetattroOverloadFunctionImpl(const FunctionGroups &functionGroups);
+    static AttroCheck checkAttroFunctionNeedsImpl(const AbstractMetaClassCPtr &metaClass,
+                                                  const FunctionGroups &functionGroups);
+    static bool isVirtualOverride(const AbstractMetaFunctionCPtr &f);
 
     QString translateTypeForWrapperMethod(const AbstractMetaType &cType,
                                           const AbstractMetaClassCPtr &context,
@@ -437,22 +441,22 @@ private:
                                             QString &code) const;
 
     /// Replaces the %CONVERTTOPYTHON type system variable.
-    inline void replaceConvertToPythonTypeSystemVariable(QString &code) const
+    void replaceConvertToPythonTypeSystemVariable(QString &code) const
     {
         replaceConverterTypeSystemVariable(TypeSystemToPythonFunction, code);
     }
     /// Replaces the %CONVERTTOCPP type system variable.
-    inline void replaceConvertToCppTypeSystemVariable(QString &code) const
+    void replaceConvertToCppTypeSystemVariable(QString &code) const
     {
         replaceConverterTypeSystemVariable(TypeSystemToCppFunction, code);
     }
     /// Replaces the %ISCONVERTIBLE type system variable.
-    inline void replaceIsConvertibleToCppTypeSystemVariable(QString &code) const
+    void replaceIsConvertibleToCppTypeSystemVariable(QString &code) const
     {
         replaceConverterTypeSystemVariable(TypeSystemIsConvertibleFunction, code);
     }
     /// Replaces the %CHECKTYPE type system variable.
-    inline void replaceTypeCheckTypeSystemVariable(QString &code) const
+    void replaceTypeCheckTypeSystemVariable(QString &code) const
     {
         replaceConverterTypeSystemVariable(TypeSystemCheckFunction, code);
     }

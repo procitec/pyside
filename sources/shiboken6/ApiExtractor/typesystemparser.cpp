@@ -9,6 +9,8 @@
 #include "containertypeentry.h"
 #include "customconversion.h"
 #include "customtypenentry.h"
+#include "documentation_enums.h"
+#include "filecache.h"
 #include "flagstypeentry.h"
 #include "functiontypeentry.h"
 #include "namespacetypeentry.h"
@@ -171,34 +173,14 @@ static inline bool hasFileSnippetAttributes(const QXmlStreamAttributes *attribut
     return attributes->hasAttribute(fileAttribute);
 }
 
-// Extract a snippet from a file within annotation "// @snippet label".
-std::optional<QString>
-    extractSnippet(const QString &code, const QString &snippetLabel)
+static QRegularExpression snippetPattern(const QString &snippetLabel)
 {
-    if (snippetLabel.isEmpty())
-        return code;
     const QString pattern = R"(^\s*//\s*@snippet\s+)"_L1
-        + QRegularExpression::escape(snippetLabel)
-        + R"(\s*$)"_L1;
-    const QRegularExpression snippetRe(pattern);
-    Q_ASSERT(snippetRe.isValid());
-
-    bool useLine = false;
-    bool foundLabel = false;
-    QString result;
-    const auto lines = QStringView{code}.split(u'\n');
-    for (const auto &line : lines) {
-        if (snippetRe.matchView(line).hasMatch()) {
-            foundLabel = true;
-            useLine = !useLine;
-            if (!useLine)
-                break; // End of snippet reached
-        } else if (useLine)
-            result += line.toString() + u'\n';
-    }
-    if (!foundLabel)
-        return {};
-    return CodeSnipAbstract::fixSpaces(result);
+                            + QRegularExpression::escape(snippetLabel)
+                            + R"(\s*$)"_L1;
+    QRegularExpression result(pattern);
+    Q_ASSERT(result.isValid());
+    return result;
 }
 
 template <class EnumType>
@@ -286,6 +268,22 @@ ENUM_LOOKUP_BEGIN(TypeSystem::Language, Qt::CaseInsensitive,
         {u"native", TypeSystem::NativeCode}, // em algum lugar do cpp
         {u"shell", TypeSystem::ShellCode}, // coloca no header, mas antes da declaracao da classe
         {u"target", TypeSystem::TargetLangCode}  // em algum lugar do cpp
+    };
+ENUM_LOOKUP_LINEAR_SEARCH
+
+ENUM_LOOKUP_BEGIN(DocumentationFormat, Qt::CaseInsensitive,
+                  documentationFormatFromAttribute)
+    {
+        {u"native", DocumentationFormat::Native},
+        {u"target",  DocumentationFormat::Target}
+    };
+ENUM_LOOKUP_LINEAR_SEARCH
+
+ENUM_LOOKUP_BEGIN(DocumentationEmphasis, Qt::CaseSensitive,
+                  documentationEmphasisFromAttribute)
+    {
+        {u"none", DocumentationEmphasis::None},
+        {u"language-note", DocumentationEmphasis::LanguageNote}
     };
 ENUM_LOOKUP_LINEAR_SEARCH
 
@@ -540,8 +538,8 @@ ENUM_LOOKUP_BEGIN(TypeSystem::Visibility, Qt::CaseSensitive,
 };
 ENUM_LOOKUP_LINEAR_SEARCH
 
-static int indexOfAttribute(const QXmlStreamAttributes &atts,
-                            QAnyStringView name)
+static qsizetype indexOfAttribute(const QXmlStreamAttributes &atts,
+                                  QAnyStringView name)
 {
     for (qsizetype i = 0, size = atts.size(); i < size; ++i) {
         if (atts.at(i).qualifiedName() == name)
@@ -1358,8 +1356,7 @@ FlagsTypeEntryPtr
     m_context->db->addFlagsType(ftype);
     m_context->db->addType(ftype);
 
-    const int revisionIndex =
-        indexOfAttribute(*attributes, u"flags-revision");
+    const auto revisionIndex = indexOfAttribute(*attributes, u"flags-revision");
     ftype->setRevision(revisionIndex != -1
                        ? attributes->takeAt(revisionIndex).value().toInt()
                        : enumEntry->revision());
@@ -1379,7 +1376,9 @@ SmartPointerTypeEntryPtr
     QString valueCheckMethod;
     QString nullCheckMethod;
     QString resetMethod;
+    TypeDatabaseParserContext::SmartPointerEntry entry;
     QString instantiations;
+    QString excludedInstantiations;
     for (auto i = attributes->size() - 1; i >= 0; --i) {
         const auto name = attributes->at(i).qualifiedName();
         if (name == u"type") {
@@ -1395,7 +1394,9 @@ SmartPointerTypeEntryPtr
         } else if (name == u"ref-count-method") {
             refCountMethodName = attributes->takeAt(i).value().toString();
         } else if (name == u"instantiations") {
-            instantiations = attributes->takeAt(i).value().toString();
+            entry.instantiations = attributes->takeAt(i).value().toString();
+        } else if (name == u"excluded-instantiations") {
+            entry.excludedInstantiations = attributes->takeAt(i).value().toString();
         } else if (name == u"value-check-method") {
             valueCheckMethod = attributes->takeAt(i).value().toString();
         } else if (name == u"null-check-method") {
@@ -1438,7 +1439,8 @@ SmartPointerTypeEntryPtr
     type->setNullCheckMethod(nullCheckMethod);
     type->setValueCheckMethod(valueCheckMethod);
     type->setResetMethod(resetMethod);
-    m_context->smartPointerInstantiations.insert(type, instantiations);
+    if (!entry.instantiations.isEmpty() || !entry.excludedInstantiations.isEmpty())
+        m_context->smartPointerInstantiations.insert(type, entry);
     return type;
 }
 
@@ -1700,8 +1702,7 @@ ValueTypeEntryPtr
     if (!applyCommonAttributes(reader, typeEntry, attributes))
         return nullptr;
     applyComplexTypeAttributes(reader, typeEntry, attributes);
-    const int defaultCtIndex =
-        indexOfAttribute(*attributes, u"default-constructor");
+    const auto defaultCtIndex = indexOfAttribute(*attributes, u"default-constructor");
     if (defaultCtIndex != -1)
          typeEntry->setDefaultConstructor(attributes->takeAt(defaultCtIndex).value().toString());
     return typeEntry;
@@ -1925,6 +1926,8 @@ void TypeSystemParser::applyComplexTypeAttributes(const ConditionalStreamReader 
             if (convertBoolean(attribute.value(), parentManagementAttribute, false))
                 ctype->setTypeFlags(ctype->typeFlags() | ComplexTypeEntry::ParentManagement);
             ComplexTypeEntry::setParentManagementEnabled(true);
+        }  else if (name == docFileAttribute) {
+            ctype->setDocFile(attributes->takeAt(i).value().toString());
         }
     }
 
@@ -2030,7 +2033,8 @@ bool TypeSystemParser::parseInjectDocumentation(const ConditionalStreamReader &,
     }
 
     TypeSystem::DocModificationMode mode = TypeSystem::DocModificationReplace;
-    TypeSystem::Language lang = TypeSystem::NativeCode;
+    DocumentationFormat format = DocumentationFormat::Native;
+    DocumentationEmphasis emphasis = DocumentationEmphasis::None;
     for (auto i = attributes->size() - 1; i >= 0; --i) {
         const auto name = attributes->at(i).qualifiedName();
         if (name == u"mode") {
@@ -2043,18 +2047,32 @@ bool TypeSystemParser::parseInjectDocumentation(const ConditionalStreamReader &,
             mode = modeOpt.value();
         } else if (name == formatAttribute) {
             const auto attribute = attributes->takeAt(i);
-            const auto langOpt = languageFromAttribute(attribute.value());
-            if (!langOpt.has_value()) {
+            const auto formatOpt = documentationFormatFromAttribute(attribute.value());
+            if (!formatOpt.has_value()) {
                 m_error = msgInvalidAttributeValue(attribute);
                 return false;
             }
-            lang = langOpt.value();
+            format = formatOpt.value();
+        } else if (name == u"emphasis") {
+            const auto attribute = attributes->takeAt(i);
+            const auto emphasisOpt = documentationEmphasisFromAttribute(attribute.value());
+            if (!emphasisOpt.has_value()) {
+                m_error = msgInvalidAttributeValue(attribute);
+                return false;
+            }
+            emphasis = emphasisOpt.value();
         }
+    }
+
+    if (emphasis != DocumentationEmphasis::None && mode == TypeSystem::DocModificationXPathReplace) {
+        m_error = "Emphasis is not supported for XPathReplace"_L1;
+        return false;
     }
 
     QString signature = isTypeEntry(topElement) ? QString() : m_currentSignature;
     DocModification mod(mode, signature);
-    mod.setFormat(lang);
+    mod.setFormat(format);
+    mod.setEmphasis(emphasis);
     if (hasFileSnippetAttributes(attributes)) {
         const auto snippetOptional = readFileSnippet(attributes);
         if (!snippetOptional.has_value())
@@ -2169,8 +2187,8 @@ TypeSystemTypeEntryPtr TypeSystemParser::parseRootElement(const ConditionalStrea
         std::const_pointer_cast<TypeSystemTypeEntry>(m_context->db->findTypeSystemType(m_defaultPackage));
     const bool add = !moduleEntry;
     if (add) {
-        moduleEntry.reset(new TypeSystemTypeEntry(m_defaultPackage, since,
-                                                  currentParentTypeEntry()));
+        moduleEntry = std::make_shared<TypeSystemTypeEntry>(m_defaultPackage, since,
+                                                            currentParentTypeEntry());
         moduleEntry->setSubModule(subModuleOf);
     }
     if (!docPackage.isEmpty())
@@ -2310,17 +2328,9 @@ bool TypeSystemParser::parseCustomConversion(const ConditionalStreamReader &,
             if (lang != TypeSystem::TargetLangCode)
                 return true;
 
-            QFile conversionSource(sourceFile);
-            if (!conversionSource.open(QIODevice::ReadOnly | QIODevice::Text)) {
-                m_error = msgCannotOpenForReading(conversionSource);
+            const auto conversionRuleOptional = readFileSnippetContents(sourceFile, snippetLabel);
+            if (!conversionRuleOptional.has_value())
                 return false;
-            }
-            const auto conversionRuleOptional =
-                extractSnippet(QString::fromUtf8(conversionSource.readAll()), snippetLabel);
-            if (!conversionRuleOptional.has_value()) {
-                m_error = msgCannotFindSnippet(sourceFile, snippetLabel);
-                return false;
-            }
             valueTypeEntry->setTargetConversionRule(conversionRuleOptional.value());
         }
         return true;
@@ -2450,7 +2460,7 @@ bool TypeSystemParser::parseModifyArgument(const ConditionalStreamReader &,
         return false;
     }
 
-    int idx;
+    int idx = 0;
     if (!parseArgumentIndex(index, &idx, &m_error))
         return false;
 
@@ -2473,8 +2483,7 @@ bool TypeSystemParser::parseNoNullPointer(const ConditionalStreamReader &reader,
     ArgumentModification &lastArgMod = m_contextStack.top()->functionMods.last().argument_mods().last();
     lastArgMod.setNoNullPointers(true);
 
-    const int defaultValueIndex =
-        indexOfAttribute(*attributes, u"default-value");
+    const auto defaultValueIndex = indexOfAttribute(*attributes, u"default-value");
     if (defaultValueIndex != -1) {
         const QXmlStreamAttribute attribute = attributes->takeAt(defaultValueIndex);
         qCWarning(lcShiboken, "%s",
@@ -3007,6 +3016,20 @@ bool TypeSystemParser::parseParentOwner(const ConditionalStreamReader &,
     return true;
 }
 
+std::optional<QString>
+    TypeSystemParser::readFileSnippetContents(const QString &fileName,
+                                              const QString &snippetName)
+{
+    static FileCache cache;
+
+    const auto result = snippetName.isEmpty() ? cache.fileContents(fileName)
+        : cache.fileSnippet(fileName, snippetName, snippetPattern(snippetName));
+
+    if (!result.has_value())
+        m_error = cache.errorString();
+    return result;
+}
+
 std::optional<TypeSystemParser::Snippet>
     TypeSystemParser::readFileSnippet(QXmlStreamAttributes *attributes)
 {
@@ -3025,24 +3048,10 @@ std::optional<TypeSystemParser::Snippet>
     }
     const QString resolved = m_context->db->modifiedTypesystemFilepath(result.fileName,
                                                                        m_currentPath);
-    if (!QFile::exists(resolved)) {
-        m_error = u"File for inject code not exist: "_s
-                  + QDir::toNativeSeparators(result.fileName);
+    auto snippetO = readFileSnippetContents(resolved, result.snippetLabel);
+    if (!snippetO.has_value())
         return std::nullopt;
-    }
-    QFile codeFile(resolved);
-    if (!codeFile.open(QIODevice::Text | QIODevice::ReadOnly)) {
-        m_error = msgCannotOpenForReading(codeFile);
-        return std::nullopt;
-    }
-    const auto contentOptional = extractSnippet(QString::fromUtf8(codeFile.readAll()),
-                                                result.snippetLabel);
-    codeFile.close();
-    if (!contentOptional.has_value()) {
-        m_error = msgCannotFindSnippet(resolved, result.snippetLabel);
-        return std::nullopt;
-    }
-    result.content = contentOptional.value();
+    result.content = snippetO.value();
     return result;
 }
 
@@ -3641,7 +3650,7 @@ bool TypeSystemParser::startElement(const ConditionalStreamReader &reader, Stack
                 m_error = msgMissingAttribute(nameAttribute);
                 return false;
             }
-            m_templateEntry.reset(new TemplateEntry(attributes.takeAt(nameIndex).value().toString()));
+            m_templateEntry = std::make_shared<TemplateEntry>(attributes.takeAt(nameIndex).value().toString());
         }
             break;
         case StackElement::InsertTemplate:

@@ -953,7 +953,7 @@ PrimitiveTypeEntryPtr PrimitiveTypeEntry::referencedTypeEntry() const
     return d->m_referencedTypeEntry;
 }
 
-void PrimitiveTypeEntry::setReferencedTypeEntry(PrimitiveTypeEntryPtr referencedTypeEntry)
+void PrimitiveTypeEntry::setReferencedTypeEntry(const PrimitiveTypeEntryPtr &referencedTypeEntry)
 {
     S_D(PrimitiveTypeEntry);
     d->m_referencedTypeEntry = referencedTypeEntry;
@@ -1367,6 +1367,7 @@ public:
     QString m_defaultConstructor;
     QString m_defaultSuperclass;
     QString m_qualifiedCppName;
+    QString m_docFile;
 
     uint m_polymorphicBase : 1;
     uint m_genericClass : 1;
@@ -1799,6 +1800,18 @@ void ComplexTypeEntry::setValueTypeWithCopyConstructorOnly(bool v)
     d->m_isValueTypeWithCopyConstructorOnly = v;
 }
 
+QString ComplexTypeEntry::docFile() const
+{
+    S_D(const ComplexTypeEntry);
+    return d->m_docFile;
+}
+
+void ComplexTypeEntry::setDocFile(const QString &docFile)
+{
+    S_D(ComplexTypeEntry);
+    d->m_docFile = docFile;
+}
+
 // FIXME PYSIDE 7: Remove this and make "true" the default
 static bool parentManagementEnabled = false;
 
@@ -1902,7 +1915,7 @@ ComplexTypeEntryPtr TypedefEntry::target() const
     return d->m_target;
 }
 
-void TypedefEntry::setTarget(ComplexTypeEntryPtr target)
+void TypedefEntry::setTarget(const ComplexTypeEntryPtr &target)
 {
     S_D(TypedefEntry);
     d->m_target = target;
@@ -2062,6 +2075,7 @@ public:
     QString m_nullCheckMethod;
     QString m_resetMethod;
     SmartPointerTypeEntry::Instantiations m_instantiations;
+    TypeEntryCList m_excludedInstantiations;
     TypeSystem::SmartPointerType m_smartPointerType;
 };
 
@@ -2157,6 +2171,18 @@ void SmartPointerTypeEntry::setInstantiations(const Instantiations &i)
     d->m_instantiations = i;
 }
 
+void SmartPointerTypeEntry::setExcludedInstantiations(const TypeEntryCList  &ex)
+{
+    S_D(SmartPointerTypeEntry);
+    d->m_excludedInstantiations = ex;
+}
+
+const TypeEntryCList &SmartPointerTypeEntry::excludedInstantiations() const
+{
+    S_D(const SmartPointerTypeEntry);
+    return d->m_excludedInstantiations;
+}
+
 SmartPointerTypeEntry::SmartPointerTypeEntry(SmartPointerTypeEntryPrivate *d) :
     ComplexTypeEntry(d)
 {
@@ -2166,7 +2192,8 @@ bool SmartPointerTypeEntry::matchesInstantiation(const TypeEntryCPtr &e) const
 {
     S_D(const SmartPointerTypeEntry);
     // No instantiations specified, or match
-    return d->m_instantiations.isEmpty() || d->instantiationIndex(e) != -1;
+    return !d->m_excludedInstantiations.contains(e)
+        && (d->m_instantiations.isEmpty() || d->instantiationIndex(e) != -1);
 }
 
 static QString fixSmartPointerName(QString name)

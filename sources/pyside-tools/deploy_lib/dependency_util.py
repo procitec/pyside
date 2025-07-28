@@ -18,11 +18,11 @@ from . import IMPORT_WARNING_PYSIDE, DEFAULT_IGNORE_DIRS, run_command
 
 
 @lru_cache(maxsize=None)
-def get_py_files(project_dir: Path, extra_ignore_dirs: list[Path] = None, project_data=None):
+def get_py_files(project_dir: Path, extra_ignore_dirs: tuple[Path] = None, project_data=None):
     """Finds and returns all the Python files in the project
     """
     py_candidates = []
-    ignore_dirs = ["__pycache__", *DEFAULT_IGNORE_DIRS]
+    ignore_dirs = DEFAULT_IGNORE_DIRS.copy()
 
     if project_data:
         py_candidates = project_data.python_files
@@ -53,7 +53,7 @@ def get_py_files(project_dir: Path, extra_ignore_dirs: list[Path] = None, projec
     # incase there is not .pyproject file, search all python files in project_dir, except
     # ignore_dirs
     if extra_ignore_dirs:
-        ignore_dirs.extend(extra_ignore_dirs)
+        ignore_dirs.update(extra_ignore_dirs)
 
     # find relevant .py files
     _walk = os.walk(project_dir)
@@ -116,6 +116,8 @@ def find_permission_categories(project_dir: Path, extra_ignore_dirs: list[Path] 
 
         return set(perm_categories)
 
+    if extra_ignore_dirs is not None:
+        extra_ignore_dirs = tuple(extra_ignore_dirs)
     py_candidates = get_py_files(project_dir, extra_ignore_dirs, project_data)
     for py_candidate in py_candidates:
         all_perm_categories = all_perm_categories.union(pyside_permission_imports(py_candidate))
@@ -143,7 +145,7 @@ def find_pyside_modules(project_dir: Path, extra_ignore_dirs: list[Path] = None,
             for node in ast.walk(tree):
                 if isinstance(node, ast.ImportFrom):
                     main_mod_name = node.module
-                    if main_mod_name.startswith("PySide6"):
+                    if main_mod_name and main_mod_name.startswith("PySide6"):
                         if main_mod_name == "PySide6":
                             # considers 'from PySide6 import QtCore'
                             for imported_module in node.names:
@@ -172,6 +174,8 @@ def find_pyside_modules(project_dir: Path, extra_ignore_dirs: list[Path] = None,
 
         return set(modules)
 
+    if extra_ignore_dirs is not None:
+        extra_ignore_dirs = tuple(extra_ignore_dirs)
     py_candidates = get_py_files(project_dir, extra_ignore_dirs, project_data)
     for py_candidate in py_candidates:
         all_modules = all_modules.union(pyside_module_imports(py_candidate))

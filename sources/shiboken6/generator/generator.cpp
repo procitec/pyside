@@ -164,7 +164,7 @@ QString Generator::fileNameForContextHelper(const GeneratorContext &context,
 
 {
     if (!context.forSmartPointer()) {
-        const auto metaClass = context.metaClass();
+        const auto &metaClass = context.metaClass();
         QString fileNameBase = flags.testFlag(FileNameFlag::UnqualifiedName)
             ? metaClass->name() : metaClass->qualifiedCppName();
         if (!flags.testFlag(FileNameFlag::KeepCase))
@@ -303,11 +303,7 @@ bool Generator::generate()
     // Generate smart pointers.
     for (const auto &smp: m_d->api.instantiatedSmartPointers()) {
         if (shouldGenerate(smp.specialized->typeEntry())) {
-            AbstractMetaClassCPtr pointeeClass;
-            const auto instantiatedType = smp.type.instantiations().constFirst().typeEntry();
-            if (instantiatedType->isComplex()) // not a C++ primitive
-                pointeeClass = AbstractMetaClass::findClass(m_d->api.classes(), instantiatedType);
-            const auto context = contextForSmartPointer(smp.specialized, smp.type, pointeeClass);
+            const auto context = contextForSmartPointer(smp.specialized, smp.type, smp.pointee);
             const QString targetDirectory = directoryForContext(context);
             FileOut fileOut(targetDirectory + u'/' + fileNameForContext(context));
             generateSmartPointerClass(fileOut.stream, targetDirectory, context);
@@ -700,7 +696,7 @@ QString Generator::globalScopePrefix(const GeneratorContext &classContext)
 }
 
 template<typename T>
-static QString getClassTargetFullName_(T t, bool includePackageName)
+static QString getClassTargetFullName_(const T &t, bool includePackageName)
 {
     QString name = t->name();
     AbstractMetaClassCPtr context = t->enclosingClass();

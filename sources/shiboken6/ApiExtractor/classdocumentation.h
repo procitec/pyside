@@ -36,6 +36,7 @@ struct FunctionDocumentationQuery
 /// A function in a WebXML/doxygen document
 struct FunctionDocumentation : public FunctionDocumentationQuery
 {
+    QStringList parameterNames;
     QString signature;
     QString returnType;
     QString description;
@@ -68,7 +69,7 @@ struct ClassDocumentation
 };
 
 /// Parse a WebXML class/namespace document
-std::optional<ClassDocumentation> parseWebXml(const QString &fileName, QString *errorMessage);
+std::optional<ClassDocumentation> parseWebXml(const QStringList &fileNames, QString *errorMessage);
 
 /// Extract the module description from a WebXML module document
 QString webXmlModuleDescription(const QString &fileName, QString *errorMessage);

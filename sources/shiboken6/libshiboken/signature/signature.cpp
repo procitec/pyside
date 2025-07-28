@@ -275,6 +275,19 @@ static PyObject *get_signature(PyObject * /* self */, PyObject *args)
 
 ////////////////////////////////////////////////////////////////////////////
 //
+// make_snake_case_name  --  make efficient name change available in Python
+//
+//
+
+static PyObject *make_snake_case_name(PyObject * /* self */, PyObject *arg)
+{
+    if (!PyUnicode_Check(arg))
+        return PyErr_Format(PyExc_TypeError, "%S is not a string");
+    return Shiboken::String::getSnakeCaseName(arg, true);
+}
+
+////////////////////////////////////////////////////////////////////////////
+//
 // feature_import  --  special handling for `from __feature__ import ...`
 //
 // The actual function is implemented in Python.
@@ -290,11 +303,18 @@ static PyObject *feature_import(PyObject * /* self */, PyObject *args, PyObject 
     // feature_import did not handle it, so call the normal import.
     Py_DECREF(ret);
     static PyObject *builtins = PyEval_GetBuiltins();
-    PyObject *import_func = PyDict_GetItemString(builtins, "__orig_import__");
-    if (import_func == nullptr) {
+    PyObject *origImportFunc = PyDict_GetItemString(builtins, "__orig_import__");
+    if (origImportFunc == nullptr) {
         Py_FatalError("builtins has no \"__orig_import__\" function");
     }
-    ret = PyObject_Call(import_func, args, kwds);
+    // PYSIDE-3054: Instead of just calling the original import, we temporarily
+    //              reset the whole import function to the previous version.
+    //              This prevents unforeseen recursions like in settrace.
+    PyObject *featureImportFunc = PyDict_GetItemString(builtins, "__import__");
+    Py_INCREF(origImportFunc);
+    Py_INCREF(featureImportFunc);
+    PyDict_SetItemString(builtins, "__import__", origImportFunc);
+    ret = PyObject_Call(origImportFunc, args, kwds);
     if (ret) {
         // PYSIDE-2029: Intercept after the import to search for PySide usage.
         PyObject *post = PyObject_CallFunctionObjArgs(pyside_globals->feature_imported_func,
@@ -302,16 +322,22 @@ static PyObject *feature_import(PyObject * /* self */, PyObject *args, PyObject 
         Py_XDECREF(post);
         if (post == nullptr) {
             Py_DECREF(ret);
-            return nullptr;
+            ret = nullptr;
         }
     }
+    PyDict_SetItemString(builtins, "__import__", featureImportFunc);
+    Py_DECREF(origImportFunc);
+    Py_DECREF(featureImportFunc);
     return ret;
 }
 
 PyMethodDef signature_methods[] = {
-    {"__feature_import__", (PyCFunction)feature_import, METH_VARARGS | METH_KEYWORDS, nullptr},
-    {"get_signature", (PyCFunction)get_signature, METH_VARARGS,
+    {"__feature_import__", reinterpret_cast<PyCFunction>(feature_import),
+        METH_VARARGS | METH_KEYWORDS, nullptr},
+    {"get_signature", reinterpret_cast<PyCFunction>(get_signature), METH_VARARGS,
         "get the signature, passing an optional string parameter"},
+    {"make_snake_case_name", reinterpret_cast<PyCFunction>(make_snake_case_name), METH_O,
+        "turn a camelCase name into snake_case"},
     {nullptr, nullptr, 0, nullptr}
 };
 

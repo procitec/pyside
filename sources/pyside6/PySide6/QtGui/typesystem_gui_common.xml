@@ -8,7 +8,6 @@
   <load-typesystem name="templates/common.xml" generate="no"/>
   <load-typesystem name="templates/core_common.xml" generate="no"/>
   <load-typesystem name="templates/gui_common.xml" generate="no"/>
-  <load-typesystem name="templates/opengl_common.xml" generate="no"/>
 
   <rejection class="^Q.*$" argument-type="^QPlatform.*$"/>
   <function signature="qAlpha(uint)"/>
@@ -81,7 +80,8 @@
   <!-- For Qt::mightBeRichText(QString), Qt::convertFromPlainText(QString,Qt::WhiteSpaceMode)
        Match on files from '/QtGui/' (shadow build) or '/gui/' (developer build)
        or '/QtGui.framework' (macOS) -->
-  <namespace-type name="Qt" files="^.*/(gui|QtGui)[/.].*\.h$" extends="PySide6.QtCore"/>
+  <namespace-type name="Qt" files="^.*/(gui|QtGui)[/.].*\.h$" extends="PySide6.QtCore"
+                  doc-file="qt-sub-qtgui"/>
 
   <primitive-type name="WId" target-lang-api-name="PyLong">
     <conversion-rule>
@@ -185,11 +185,11 @@
     </modify-function>
   </object-type>
   <object-type name="QShortcut">
-    <add-function signature="QShortcut(QKeySequence&amp;,QObject*,PyCallable*,Qt::ShortcutContext=Qt::WindowShortcut)">
+    <add-function signature="QShortcut(QKeySequence&amp;@key@,QObject*@parent@,PyCallable*@callable@,Qt::ShortcutContext@context@=Qt::WindowShortcut)">
       <inject-code class="target" position="beginning" file="../glue/qtgui.cpp" snippet="qshortcut-1"/>
       <inject-code class="target" position="end" file="../glue/qtgui.cpp" snippet="qshortcut-2"/>
     </add-function>
-    <add-function signature="QShortcut(QKeySequence::StandardKey,QObject*,PyCallable*,Qt::ShortcutContext=Qt::WindowShortcut)">
+    <add-function signature="QShortcut(QKeySequence::StandardKey@standard_key@,QObject*@parent@,PyCallable*@callable@,Qt::ShortcutContext@context@=Qt::WindowShortcut)">
       <inject-code class="target" position="beginning" file="../glue/qtgui.cpp" snippet="qshortcut-1"/>
       <inject-code class="target" position="end" file="../glue/qtgui.cpp" snippet="qshortcut-2"/>
     </add-function>
@@ -248,7 +248,7 @@
         <insert-template name="fix_bool*"/>
       </inject-code>
     </modify-function>
-    <add-function signature="quadToQuad(QPolygonF&amp;,QPolygonF&amp;)" return-type="PyObject*" static="true">
+    <add-function signature="quadToQuad(QPolygonF&amp;@one@,QPolygonF&amp;@two@)" return-type="PyObject*" static="true">
       <inject-code file="../glue/qtgui.cpp" snippet="qtransform-quadtoquad"/>
     </add-function>
     <add-function signature="quadToSquare(QPolygonF &amp;)" return-type="PyObject*" static="true">
@@ -383,7 +383,7 @@
   </value-type>
   <value-type name="QRegion" >
     <enum-type name="RegionType"/>
-    <add-function signature="__len__">
+    <add-function signature="__len__" return-type="int">
         <inject-code class="target" position="beginning" file="../glue/qtgui.cpp" snippet="qregion-len"/>
     </add-function>
     <add-function signature="__getitem__">
@@ -516,9 +516,8 @@
         <modify-argument index="1">
             <replace-type modified-type="PySequence"/>
         </modify-argument>
-        <inject-code class="target" position="beginning">
-            <insert-template name="load_xpm"/>
-        </inject-code>
+        <inject-code class="target" position="beginning"
+                     file="../glue/qtgui.cpp" snippet="qpixmap-load-xpm"/>
     </modify-function>
     <modify-function signature="QPixmap(const QString &amp;, const char *, QFlags&lt;Qt::ImageConversionFlag&gt;)">
         <modify-argument index="1"><replace-type modified-type="PyPathLike"/></modify-argument>
@@ -631,7 +630,24 @@
     <extra-includes>
       <include file-name="QStringList" location="global"/>
     </extra-includes>
-    <value-type name="Tag" since="6.7"/>
+    <value-type name="Tag" since="6.7">
+        <inject-code class="native" position="beginning"
+                     file="../glue/qtgui.cpp" snippet="qfont-tag-from-str-helper"/>
+        <add-function signature="Tag(QString@name@)">
+            <inject-code class="target" position="beginning"
+                         file="../glue/qtgui.cpp" snippet="qfont-tag-init-str"/>
+        </add-function>
+        <add-function signature="fromString(QString@name@)"
+                      static="true" return-type="QFont::Tag">
+            <inject-code class="target" position="beginning"
+                         file="../glue/qtgui.cpp" snippet="qfont-tag-fromString"/>
+        </add-function>
+        <add-function signature="fromValue(int@value@)"
+                      static="true" return-type="QFont::Tag">
+            <inject-code class="target" position="beginning"
+                         file="../glue/qtgui.cpp" snippet="qfont-tag-fromValue"/>
+        </add-function>
+    </value-type>
     <!-- PYSIDE-1685: QFont(QString) should be checked first, else it will be interpreted as sequence -->
     <modify-function signature="QFont(const QString&amp;,int,int, bool)" overload-number="0"/>
     <modify-function signature="QFont(const QStringList &amp;,int,int, bool)" overload-number="1"/>
@@ -692,14 +708,14 @@
         <inject-code class="target" position="beginning" file="../glue/qtcore.cpp" snippet="qfile-path-1"/>
     </modify-function>
 
-    <add-function signature="QImage(QString&amp;,int,int,int,QImage::Format)">
+    <add-function signature="QImage(QString&amp;,int@width@,int@height@,int@bytes_per_line@,QImage::Format@format@)">
         <inject-code>
             <insert-template name="qimage_buffer_constructor">
                 <replace from="%ARGS" to="%2, %3, %4, %5"/>
             </insert-template>
         </inject-code>
     </add-function>
-    <add-function signature="QImage(QString&amp;,int,int,QImage::Format)">
+    <add-function signature="QImage(QString&amp;,int@width@,int@height@,QImage::Format@format@)">
         <inject-code>
             <insert-template name="qimage_buffer_constructor">
                 <replace from="%ARGS" to="%2, %3, %4"/>
@@ -716,9 +732,8 @@
         <modify-argument index="1">
             <replace-type modified-type="PySequence"/>
         </modify-argument>
-        <inject-code class="target" position="beginning">
-            <insert-template name="load_xpm"/>
-        </inject-code>
+        <inject-code class="target" position="beginning"
+                     file="../glue/qtgui.cpp" snippet="qpixmap-load-xpm"/>
     </modify-function>
     <!-- ### There is already an fromData with a QByteArray type (that is convertible from Python's str) as the first type. -->
     <modify-function signature="fromData(const uchar*,int,const char*)" remove="all"/>
@@ -788,14 +803,12 @@
       <include file-name="QVariant" location="global"/>
     </extra-includes>
     <add-function signature="__repr__" return-type="str">
-        <inject-code class="target" position="beginning">
-            <insert-template name="qcolor_repr"/>
-        </inject-code>
+        <inject-code class="target" position="beginning"
+                     file="../glue/qtgui.cpp" snippet="qcolor-repr"/>
     </add-function>
     <add-function signature="__str__" return-type="str">
-        <inject-code class="target" position="beginning">
-            <insert-template name="qcolor_repr"/>
-        </inject-code>
+        <inject-code class="target" position="beginning"
+                     file="../glue/qtgui.cpp" snippet="qcolor-repr"/>
     </add-function>
     <add-function signature="__setstate__(PyObject*)" return-type="PyObject">
         <inject-code file="../glue/qtgui.cpp" snippet="qcolor-setstate"/>
@@ -812,7 +825,7 @@
     <!-- ### Constructor removed because we already have an overload using QString. -->
     <modify-function signature="QColor(const char*)" remove="all"/>
     <!-- ### -->
-    <add-function signature="QColor(QVariant)">
+    <add-function signature="QColor(QVariant@color@)">
         <inject-code class="target" position="beginning" file="../glue/qtgui.cpp" snippet="qcolor"/>
     </add-function>
     <!-- get* methods. Inject code -->
@@ -1039,18 +1052,16 @@
       <modify-argument index="1">
         <replace-type modified-type="char"/>
       </modify-argument>
-      <inject-code class="target" position="beginning">
-        <insert-template name="QFontCharFix"/>
-     </inject-code>
+      <inject-code class="target" position="beginning"
+                   file="../glue/qtgui.cpp" snippet="qfontmetrics-qfontcharfix"/>
     </modify-function>
 
     <modify-function signature="horizontalAdvance(QChar)const" rename="horizontalAdvanceChar">
       <modify-argument index="1">
         <replace-type modified-type="char"/>
       </modify-argument>
-      <inject-code class="target" position="beginning">
-        <insert-template name="QFontCharFix"/>
-     </inject-code>
+      <inject-code class="target" position="beginning"
+                   file="../glue/qtgui.cpp" snippet="qfontmetrics-qfontcharfix"/>
     </modify-function>
 
     <modify-function signature="boundingRect(QRectF,int,QString,int,int*)const">
@@ -1075,18 +1086,16 @@
       <modify-argument index="1">
         <replace-type modified-type="char"/>
       </modify-argument>
-      <inject-code class="target" position="beginning">
-        <insert-template name="QFontCharFix"/>
-     </inject-code>
+      <inject-code class="target" position="beginning"
+                   file="../glue/qtgui.cpp" snippet="qfontmetrics-qfontcharfix"/>
     </modify-function>
 
     <modify-function signature="horizontalAdvance(QChar)const" rename="horizontalAdvanceChar">
       <modify-argument index="1">
         <replace-type modified-type="char"/>
       </modify-argument>
-      <inject-code class="target" position="beginning">
-        <insert-template name="QFontCharFix"/>
-     </inject-code>
+      <inject-code class="target" position="beginning"
+                   file="../glue/qtgui.cpp" snippet="qfontmetrics-qfontcharfix"/>
     </modify-function>
 
     <modify-function signature="boundingRect(int,int,int,int,int,QString,int,int*)const">
@@ -1184,10 +1193,10 @@
   <object-type name="QPainterPathStroker" copyable="false"/>
   <object-type name="QPixmapCache">
     <value-type name="Key"/>
-    <add-function signature="find(QPixmapCache::Key&amp;)">
+    <add-function signature="find(QPixmapCache::Key&amp;@key@)">
         <inject-code file="../glue/qtgui.cpp" snippet="qpixmapcache-find"/>
     </add-function>
-    <add-function signature="find(const QString&amp;)">
+    <add-function signature="find(const QString&amp;@key@)">
         <inject-code file="../glue/qtgui.cpp" snippet="qpixmapcache-find"/>
     </add-function>
   </object-type>
@@ -1463,7 +1472,7 @@
   <object-type name="QInputEvent"/>
   <object-type name="QKeyEvent"
                polymorphic-id-expression="%B-&gt;type() == QEvent::KeyPress || %B-&gt;type() == QEvent::KeyRelease || %B-&gt;type() == QEvent::ShortcutOverride">
-      <add-function signature="operator!=(QKeySequence::StandardKey)">
+      <add-function signature="operator!=(QKeySequence::StandardKey@standard_key@)">
           <inject-code class="target" file="../glue/qtgui.cpp" snippet="qkeyevent-operatornotequal"/>
       </add-function>
       <add-function signature="__repr__" return-type="str">
@@ -1849,6 +1858,191 @@
     <enum-type name="PaintEngineFeature" flags="PaintEngineFeatures"/>
     <enum-type name="PolygonDrawMode"/>
     <enum-type name="Type"/>
+
+    <modify-function signature="drawLines(const QLine*,int)">
+      <modify-argument index="1">
+        <replace-type modified-type="PySequence"/>
+        <conversion-rule class="native">
+          <insert-template name="pysequence-to-c-array"> <!-- Binding -->
+            <replace from="%TYPE" to="QLine"/>
+          </insert-template>
+        </conversion-rule>
+        <conversion-rule class="target"> <!-- Virtual override -->
+          <insert-template name="c-array-to-pysequence">
+            <replace from="%TYPE" to="QLine"/>
+            <replace from="%COUNT" to="lineCount"/>
+          </insert-template>
+        </conversion-rule>
+      </modify-argument>
+      <modify-argument index="2">
+        <remove-argument/>
+        <conversion-rule class="native"> <!-- Provide parameter for binding -->
+          <insert-template name="pysequencesize_int"/>
+        </conversion-rule>
+      </modify-argument>
+    </modify-function>
+
+    <modify-function signature="drawLines(const QLineF*,int)">
+      <modify-argument index="1">
+        <replace-type modified-type="PySequence"/>
+        <conversion-rule class="native">
+          <insert-template name="pysequence-to-c-array"> <!-- Binding -->
+            <replace from="%TYPE" to="QLineF"/>
+          </insert-template>
+        </conversion-rule>
+        <conversion-rule class="target"> <!-- Virtual override -->
+          <insert-template name="c-array-to-pysequence">
+            <replace from="%TYPE" to="QLineF"/>
+            <replace from="%COUNT" to="lineCount"/>
+          </insert-template>
+        </conversion-rule>
+      </modify-argument>
+      <modify-argument index="2">
+        <remove-argument/>
+        <conversion-rule class="native"> <!-- Provide parameter for binding -->
+          <insert-template name="pysequencesize_int"/>
+        </conversion-rule>
+      </modify-argument>
+    </modify-function>
+
+    <modify-function signature="drawPoints(const QPoint*,int)">
+      <modify-argument index="1">
+        <replace-type modified-type="PySequence"/>
+        <conversion-rule class="native">
+          <insert-template name="pysequence-to-c-array"> <!-- Binding -->
+            <replace from="%TYPE" to="QPoint"/>
+          </insert-template>
+        </conversion-rule>
+        <conversion-rule class="target"> <!-- Virtual override -->
+          <insert-template name="c-array-to-pysequence">
+            <replace from="%TYPE" to="QPoint"/>
+            <replace from="%COUNT" to="pointCount"/>
+          </insert-template>
+        </conversion-rule>
+      </modify-argument>
+      <modify-argument index="2">
+        <remove-argument/>
+        <conversion-rule class="native"> <!-- Provide parameter for binding -->
+          <insert-template name="pysequencesize_int"/>
+        </conversion-rule>
+      </modify-argument>
+    </modify-function>
+
+    <modify-function signature="drawPoints(const QPointF*,int)">
+      <modify-argument index="1">
+        <replace-type modified-type="PySequence"/>
+        <conversion-rule class="native">
+          <insert-template name="pysequence-to-c-array"> <!-- Binding -->
+            <replace from="%TYPE" to="QPointF"/>
+          </insert-template>
+        </conversion-rule>
+        <conversion-rule class="target"> <!-- Virtual override -->
+          <insert-template name="c-array-to-pysequence">
+            <replace from="%TYPE" to="QPointF"/>
+            <replace from="%COUNT" to="pointCount"/>
+          </insert-template>
+        </conversion-rule>
+      </modify-argument>
+      <modify-argument index="2">
+        <remove-argument/>
+        <conversion-rule class="native"> <!-- Provide parameter for binding -->
+          <insert-template name="pysequencesize_int"/>
+        </conversion-rule>
+      </modify-argument>
+    </modify-function>
+
+    <modify-function signature="drawPolygon(const QPoint*,int,QPaintEngine::PolygonDrawMode)">
+      <modify-argument index="1">
+        <replace-type modified-type="PySequence"/>
+        <conversion-rule class="native">
+          <insert-template name="pysequence-to-c-array"> <!-- Binding -->
+            <replace from="%TYPE" to="QPoint"/>
+          </insert-template>
+        </conversion-rule>
+        <conversion-rule class="target"> <!-- Virtual override -->
+          <insert-template name="c-array-to-pysequence">
+            <replace from="%TYPE" to="QPoint"/>
+            <replace from="%COUNT" to="pointCount"/>
+          </insert-template>
+        </conversion-rule>
+      </modify-argument>
+      <modify-argument index="2">
+        <remove-argument/>
+        <conversion-rule class="native"> <!-- Provide parameter for binding -->
+          <insert-template name="pysequencesize_int"/>
+        </conversion-rule>
+      </modify-argument>
+    </modify-function>
+
+    <modify-function signature="drawPolygon(const QPointF*,int,QPaintEngine::PolygonDrawMode)">
+      <modify-argument index="1">
+        <replace-type modified-type="PySequence"/>
+        <conversion-rule class="native">
+          <insert-template name="pysequence-to-c-array"> <!-- Binding -->
+            <replace from="%TYPE" to="QPointF"/>
+          </insert-template>
+        </conversion-rule>
+        <conversion-rule class="target"> <!-- Virtual override -->
+          <insert-template name="c-array-to-pysequence">
+            <replace from="%TYPE" to="QPointF"/>
+            <replace from="%COUNT" to="pointCount"/>
+          </insert-template>
+        </conversion-rule>
+      </modify-argument>
+      <modify-argument index="2">
+        <remove-argument/>
+        <conversion-rule class="native"> <!-- Provide parameter for binding -->
+          <insert-template name="pysequencesize_int"/>
+        </conversion-rule>
+      </modify-argument>
+    </modify-function>
+
+    <modify-function signature="drawRects(const QRect*,int)">
+      <modify-argument index="1">
+        <replace-type modified-type="PySequence"/>
+        <conversion-rule class="native">
+          <insert-template name="pysequence-to-c-array"> <!-- Binding -->
+            <replace from="%TYPE" to="QRect"/>
+          </insert-template>
+        </conversion-rule>
+        <conversion-rule class="target"> <!-- Virtual override -->
+          <insert-template name="c-array-to-pysequence">
+            <replace from="%TYPE" to="QRect"/>
+            <replace from="%COUNT" to="rectCount"/>
+          </insert-template>
+        </conversion-rule>
+      </modify-argument>
+      <modify-argument index="2">
+        <remove-argument/>
+        <conversion-rule class="native"> <!-- Provide parameter for binding -->
+          <insert-template name="pysequencesize_int"/>
+        </conversion-rule>
+      </modify-argument>
+    </modify-function>
+
+    <modify-function signature="drawRects(const QRectF*,int)">
+      <modify-argument index="1">
+        <replace-type modified-type="PySequence"/>
+        <conversion-rule class="native">
+          <insert-template name="pysequence-to-c-array"> <!-- Binding -->
+            <replace from="%TYPE" to="QRectF"/>
+          </insert-template>
+        </conversion-rule>
+        <conversion-rule class="target"> <!-- Virtual override -->
+          <insert-template name="c-array-to-pysequence">
+            <replace from="%TYPE" to="QRectF"/>
+            <replace from="%COUNT" to="rectCount"/>
+          </insert-template>
+        </conversion-rule>
+      </modify-argument>
+      <modify-argument index="2">
+        <remove-argument/>
+        <conversion-rule class="native"> <!-- Provide parameter for binding -->
+          <insert-template name="pysequencesize_int"/>
+        </conversion-rule>
+      </modify-argument>
+    </modify-function>
+
     <modify-function signature="begin(QPaintDevice*)">
       <modify-argument index="1" invalidate-after-use="yes"/>
     </modify-function>
@@ -1883,32 +2077,27 @@
 
 
     <modify-function signature="drawConvexPolygon(const QPoint*,int)" remove="all"/>
-    <add-function signature="drawConvexPolygon(QList&lt;QPoint>)">
+    <add-function signature="drawConvexPolygon(QList&lt;QPoint>@points@)">
         <inject-code>
             <insert-template name="qpainter_drawlist"/>
         </inject-code>
     </add-function>
     <modify-function signature="drawConvexPolygon(const QPointF*,int)" remove="all"/>
-    <add-function signature="drawConvexPolygon(QList&lt;QPointF>)">
+    <add-function signature="drawConvexPolygon(QList&lt;QPointF>@points@)">
         <inject-code>
             <insert-template name="qpainter_drawlist"/>
         </inject-code>
     </add-function>
-    <!-- ### Overloads using QList<T> does the job of these methods -->
-    <modify-function signature="drawLines(const QLine*,int)" remove="all"/>
-    <modify-function signature="drawLines(const QPoint*,int)" remove="all"/>
-    <modify-function signature="drawLines(const QPointF*,int)" remove="all"/>
-    <modify-function signature="drawRects(const QRect*,int)" remove="all"/>
-    <!-- ### -->
+
     <!-- PYSIDE-1540: Preferably use the QPolygon overloads first to avoid
          a costly sequence type check on QPolygon. -->
     <modify-function signature="drawPoints(const QPoint*,int)" remove="all"/>
-    <add-function signature="drawPoints(QList&lt;QPoint>)" overload-number="2">
+    <add-function signature="drawPoints(QList&lt;QPoint>@points@)" overload-number="2">
         <inject-code>
             <insert-template name="qpainter_drawlist"/>
         </inject-code>
     </add-function>
-    <add-function signature="drawPoints(QList&lt;QPointF>)" overload-number="3">
+    <add-function signature="drawPoints(QList&lt;QPointF>@points@)" overload-number="3">
         <inject-code>
             <insert-template name="qpainter_drawlist"/>
         </inject-code>
@@ -1927,15 +2116,15 @@
     </add-function>
 
     <modify-function signature="drawPolygon(const QPoint*,int,Qt::FillRule)" remove="all"/>
-    <add-function signature="drawPolygon(QList&lt;QPoint>,Qt::FillRule)">
+    <add-function signature="drawPolygon(QList&lt;QPoint>@points@,Qt::FillRule@fill_rule@)">
         <inject-code file="../glue/qtgui.cpp" snippet="qpainter-drawpolygon"/>
     </add-function>
     <modify-function signature="drawPolygon(const QPointF*,int,Qt::FillRule)" remove="all"/>
-    <add-function signature="drawPolygon(QList&lt;QPointF>,Qt::FillRule)">
+    <add-function signature="drawPolygon(QList&lt;QPointF>@points@,Qt::FillRule@fill_rule@)">
         <inject-code file="../glue/qtgui.cpp" snippet="qpainter-drawpolygon"/>
     </add-function>
     <modify-function signature="drawPolyline(const QPoint*,int)" remove="all"/>
-    <add-function signature="drawPolyline(QList&lt;QPoint>)">
+    <add-function signature="drawPolyline(QList&lt;QPoint>@points@)">
         <inject-code>
             <insert-template name="qpainter_drawlist"/>
         </inject-code>
@@ -1945,7 +2134,7 @@
     <modify-function signature="drawPolyline(const QPointF*,int)" remove="all"/>
     <modify-function signature="drawPolyline(const QPolygon&amp;)" overload-number="0"/>
     <modify-function signature="drawPolyline(const QPolygonF&amp;)" overload-number="1"/>
-    <add-function signature="drawPolyline(QList&lt;QPointF>)">
+    <add-function signature="drawPolyline(QList&lt;QPointF@points@>)">
         <inject-code>
             <insert-template name="qpainter_drawlist"/>
         </inject-code>
@@ -2037,7 +2226,7 @@
             </insert-template>
         </inject-code>
     </add-function>
-    <add-function signature="QMatrix2x2(PySequence*)">
+    <add-function signature="QMatrix2x2(PySequence*@elements@)">
       <inject-code class="target" position="beginning">
         <insert-template name="matrix_constructor">
           <replace from="%SIZE" to="4"/>
@@ -2074,7 +2263,7 @@
             </insert-template>
         </inject-code>
     </add-function>
-    <add-function signature="QMatrix2x3(PySequence*)">
+    <add-function signature="QMatrix2x3(PySequence*@elements@)">
       <inject-code class="target" position="beginning">
         <insert-template name="matrix_constructor">
           <replace from="%SIZE" to="6"/>
@@ -2111,7 +2300,7 @@
             </insert-template>
         </inject-code>
     </add-function>
-    <add-function signature="QMatrix2x4(PySequence*)">
+    <add-function signature="QMatrix2x4(PySequence*@elements@)">
       <inject-code class="target" position="beginning">
         <insert-template name="matrix_constructor">
           <replace from="%SIZE" to="8"/>
@@ -2148,7 +2337,7 @@
             </insert-template>
         </inject-code>
     </add-function>
-    <add-function signature="QMatrix3x2(PySequence*)">
+    <add-function signature="QMatrix3x2(PySequence*@elements@)">
       <inject-code class="target" position="beginning">
         <insert-template name="matrix_constructor">
           <replace from="%SIZE" to="6"/>
@@ -2185,7 +2374,7 @@
             </insert-template>
         </inject-code>
     </add-function>
-    <add-function signature="QMatrix3x3(PySequence*)">
+    <add-function signature="QMatrix3x3(PySequence*@elements@)">
       <inject-code class="target" position="beginning">
         <insert-template name="matrix_constructor">
           <replace from="%SIZE" to="9"/>
@@ -2222,7 +2411,7 @@
             </insert-template>
         </inject-code>
     </add-function>
-    <add-function signature="QMatrix3x4(PySequence*)">
+    <add-function signature="QMatrix3x4(PySequence*@elements@)">
       <inject-code class="target" position="beginning">
         <insert-template name="matrix_constructor">
           <replace from="%SIZE" to="12"/>
@@ -2259,7 +2448,7 @@
             </insert-template>
         </inject-code>
     </add-function>
-    <add-function signature="QMatrix4x2(PySequence*)">
+    <add-function signature="QMatrix4x2(PySequence*@elements@)">
       <inject-code class="target" position="beginning">
         <insert-template name="matrix_constructor">
           <replace from="%SIZE" to="8"/>
@@ -2296,7 +2485,7 @@
             </insert-template>
         </inject-code>
     </add-function>
-    <add-function signature="QMatrix4x3(PySequence*)">
+    <add-function signature="QMatrix4x3(PySequence*@elements@)">
       <inject-code class="target" position="beginning">
         <insert-template name="matrix_constructor">
           <replace from="%SIZE" to="12"/>
@@ -2600,9 +2789,8 @@
             <insert-template name="return_native_eventfilter_conversion"/>
         </conversion-rule>
       </modify-argument>
-      <inject-code position="end">
-          <insert-template name="return_native_eventfilter"/>
-      </inject-code>
+      <inject-code position="end"
+                   file="../glue/qtcore.cpp" snippet="return-native-eventfilter"/>
     </modify-function>
     <modify-function signature="fromWinId(WId)">
       <modify-argument index="1">
@@ -2631,7 +2819,7 @@
       <include file-name="qtguihelper.h" location="local"/>
     </extra-includes>
     <modify-function signature="QGuiApplication(int&amp;,char**,int)" access="private"/>
-    <add-function signature="QGuiApplication(QStringList)">
+    <add-function signature="QGuiApplication(QStringList@arguments@)">
         <inject-code file="../glue/qtgui.cpp" snippet="qguiapplication-1"/>
     </add-function>
     <add-function signature="QGuiApplication()">
@@ -3047,9 +3235,8 @@
           <modify-argument index="return">
               <replace-type modified-type="QString"/>
           </modify-argument>
-          <inject-code class="target" position="beginning">
-            <insert-template name="glGetString_return_QString"/>
-          </inject-code>
+          <inject-code class="target" position="end" file="../glue/qtgui.cpp"
+                       snippet="glgetstring-return"/>
       </modify-function>
       <modify-function signature="glShaderBinary(GLint,const GLuint*,GLenum,const void*,GLint)">
           <modify-argument index="2"><array/></modify-argument>
@@ -3108,6 +3295,7 @@
       <enum-type name="TypeInterpretation"/>
       <enum-type name="YUVLayout"/>
   </value-type>
+  <value-type name="QPdfOutputIntent"/>
   <object-type name="QPdfWriter">
       <enum-type name="ColorModel" since="6.8"/>
   </object-type>
