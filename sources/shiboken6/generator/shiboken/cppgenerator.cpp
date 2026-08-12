@@ -74,6 +74,29 @@ static QString mangleName(QString name)
     return name;
 }
 
+static bool metaEnumEquals(const AbstractMetaEnum &e1, const AbstractMetaEnum &e2)
+{
+    const auto typeEntry1 = e1.typeEntry();
+    const auto typeEntry2 = e2.typeEntry();
+    return typeEntry1 == typeEntry2
+        || (typeEntry1 && typeEntry2
+            && typeEntry1->qualifiedCppName() == typeEntry2->qualifiedCppName());
+}
+
+static void removeDuplicateMetaEnums(AbstractMetaEnumList *enums)
+{
+    AbstractMetaEnumList uniqueEnums;
+    for (const AbstractMetaEnum &metaEnum : std::as_const(*enums)) {
+        const auto hasEnum = std::any_of(uniqueEnums.cbegin(), uniqueEnums.cend(),
+                                         [&metaEnum](const AbstractMetaEnum &e) {
+                                             return metaEnumEquals(e, metaEnum);
+                                         });
+        if (!hasEnum)
+            uniqueEnums.append(metaEnum);
+    }
+    *enums = uniqueEnums;
+}
+
 struct sbkUnusedVariableCast
 {
     explicit sbkUnusedVariableCast(QAnyStringView name) : m_name(name) {}
@@ -6411,6 +6434,7 @@ bool CppGenerator::finishGeneration()
         if (globalEnums.size() > oldSize)
             s << nsp->typeEntry()->include();
     }
+    removeDuplicateMetaEnums(&globalEnums);
 
     TypeDatabase *typeDb = TypeDatabase::instance();
     TypeSystemTypeEntryCPtr moduleEntry = typeDb->defaultTypeSystemType();
